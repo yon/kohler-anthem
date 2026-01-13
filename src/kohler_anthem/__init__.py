@@ -63,6 +63,7 @@ from .models import (
     WarmUpState,
     WarmUpStatus,
 )
+from .mqtt import KohlerMqttClient
 from .valve import (
     create_off_command,
     create_outlet_command,
@@ -74,29 +75,24 @@ from .valve import (
 )
 
 __all__ = [
-    # Client
-    "KohlerAnthemClient",
-    # Config
-    "KohlerConfig",
-    # Auth
-    "KohlerAuth",
-    "TokenInfo",
-    # Exceptions
-    "KohlerAnthemError",
-    "AuthenticationError",
     "ApiError",
-    "DeviceNotFoundError",
-    # Models
-    "KohlerBaseModel",
+    "AuthenticationError",
     "CommandResponse",
     "ConnectionState",
     "Customer",
     "Device",
+    "DeviceNotFoundError",
     "DeviceSettings",
     "DeviceState",
     "DeviceStateData",
     "FlowUnit",
     "Home",
+    "KohlerAnthemClient",
+    "KohlerAnthemError",
+    "KohlerAuth",
+    "KohlerBaseModel",
+    "KohlerConfig",
+    "KohlerMqttClient",
     "Outlet",
     "OutletConfiguration",
     "OutletDetail",
@@ -106,6 +102,7 @@ __all__ = [
     "PresetResponse",
     "SystemState",
     "TemperatureUnit",
+    "TokenInfo",
     "ValveControlModel",
     "ValveDetail",
     "ValveMode",
@@ -114,19 +111,17 @@ __all__ = [
     "ValveState",
     "WarmUpState",
     "WarmUpStatus",
-    # Valve helpers
-    "encode_valve_command",
-    "decode_valve_command",
+    "celsius_to_fahrenheit",
     "create_off_command",
     "create_outlet_command",
     "create_stop_command",
-    "is_valve_off",
-    "outlet_to_mode",
-    # Converters
-    "celsius_to_fahrenheit",
+    "decode_valve_command",
+    "encode_valve_command",
     "fahrenheit_to_celsius",
     "gallons_to_liters",
+    "is_valve_off",
     "liters_to_gallons",
+    "outlet_to_mode",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

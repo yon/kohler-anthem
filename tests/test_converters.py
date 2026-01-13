@@ -1,6 +1,5 @@
 """Tests for unit converters."""
 
-import pytest
 
 from kohler_anthem import (
     celsius_to_fahrenheit,

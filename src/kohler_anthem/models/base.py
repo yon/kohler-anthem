@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing import TypeVar
-    Self = TypeVar("Self", bound="KohlerBaseModel")
-
 from pydantic import BaseModel, ConfigDict
+from typing_extensions import Self
 
 
 class KohlerBaseModel(BaseModel):

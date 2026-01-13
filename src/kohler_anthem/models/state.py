@@ -56,16 +56,32 @@ class ValveState(KohlerBaseModel):
             return v == "1" or v.lower() == "true"
         return bool(v) if v is not None else False
 
-    @field_validator("flow_setpoint", "error_code", mode="before")
+    @field_validator("error_code", mode="before")
     @classmethod
-    def parse_int(cls, v: Any) -> int:
-        """Parse string integers to int."""
+    def parse_error_code(cls, v: Any) -> int:
+        """Parse error code to int."""
         if isinstance(v, str):
             try:
                 return int(v)
             except ValueError:
                 return 0
         return int(v) if v is not None else 0
+
+    @field_validator("flow_setpoint", mode="before")
+    @classmethod
+    def parse_flow_setpoint(cls, v: Any) -> int:
+        """Parse flow setpoint - API returns 0-50 scale as float, convert to 0-100%."""
+        if v is None:
+            return 0
+        if isinstance(v, str):
+            try:
+                raw = float(v)
+            except ValueError:
+                return 0
+        else:
+            raw = float(v)
+        # API uses 0-50 scale, convert to 0-100%
+        return round(raw * 2)
 
     @field_validator("temperature_setpoint", mode="before")
     @classmethod
@@ -99,7 +115,9 @@ class WarmUpState(KohlerBaseModel):
                 return WarmUpStatus(v)
             except ValueError:
                 return WarmUpStatus.NOT_IN_PROGRESS
-        return v
+        if isinstance(v, WarmUpStatus):
+            return v
+        return WarmUpStatus.NOT_IN_PROGRESS
 
 
 class OutletConfiguration(KohlerBaseModel):
@@ -206,7 +224,9 @@ class DeviceStateData(KohlerBaseModel):
                 return SystemState(v)
             except ValueError:
                 return SystemState.NORMAL
-        return v
+        if isinstance(v, SystemState):
+            return v
+        return SystemState.NORMAL
 
     @field_validator("ready", mode="before")
     @classmethod
@@ -282,7 +302,9 @@ class DeviceState(KohlerBaseModel):
                 return ConnectionState(v)
             except ValueError:
                 return ConnectionState.DISCONNECTED
-        return v
+        if isinstance(v, ConnectionState):
+            return v
+        return ConnectionState.DISCONNECTED
 
     @property
     def is_connected(self) -> bool:

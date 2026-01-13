@@ -10,16 +10,13 @@ API_BASE = "https://api-kohler-us.kohler.io"
 # API Endpoints (relative to API_BASE)
 # Format strings use {customer_id}, {device_id} as placeholders
 ENDPOINTS = {
-    # Device discovery
     "customer_devices": "/devices/api/v1/device-management/customer-device/{customer_id}",
-    # Device state
     "device_state": "/devices/api/v1/device-management/gcs-state/gcsadvancestate/{device_id}",
-    # Presets
-    "presets": "/devices/api/v1/device-management/gcs-preset/{device_id}",
-    # Commands
-    "warmup": "/platform/api/v1/commands/gcs/warmup",
+    "mobile_settings": "/platform/api/v1/mobile/settings",
     "preset_control": "/platform/api/v1/commands/gcs/controlpresetorexperience",
+    "presets": "/devices/api/v1/device-management/gcs-preset/{device_id}",
     "valve_control": "/platform/api/v1/commands/gcs/solowritesystem",
+    "warmup": "/platform/api/v1/commands/gcs/warmup",
 }
 
 # Device SKU

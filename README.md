@@ -8,7 +8,7 @@ Python library for controlling Kohler Anthem digital showers.
 pip install kohler-anthem
 ```
 
-## Usage
+## Quick Start
 
 ```python
 import asyncio
@@ -18,52 +18,49 @@ async def main():
     config = KohlerConfig(
         username="user@example.com",
         password="password",
-        client_id="azure-ad-b2c-client-id",
-        apim_subscription_key="azure-apim-subscription-key",
-        api_resource="azure-ad-api-resource-id",
+        client_id="...",
+        apim_subscription_key="...",
+        api_resource="...",
     )
 
     async with KohlerAnthemClient(config) as client:
         # Discover devices
         customer = await client.get_customer("customer-id")
-        device_id = customer.get_all_devices()[0].device_id
+        device = customer.get_all_devices()[0]
 
-        # Get device state
-        state = await client.get_device_state(device_id)
-        print(f"Connected: {state.is_connected}")
+        # Get state
+        state = await client.get_device_state(device.device_id)
         print(f"Running: {state.is_running}")
 
-        # Turn on shower
-        await client.turn_on_outlet(device_id, Outlet.SHOWERHEAD, temperature_celsius=38.0)
-
-        # Turn off
-        await client.turn_off(device_id)
+        # Control
+        await client.turn_on_outlet(device.device_id, Outlet.SHOWERHEAD, temperature_celsius=38.0)
+        await client.turn_off(device.device_id)
 
 asyncio.run(main())
 ```
 
 ## Configuration
 
-`KohlerConfig` requires the following credentials:
-
 | Parameter | Description |
 |-----------|-------------|
 | `username` | Kohler account email |
 | `password` | Kohler account password |
-| `client_id` | Azure AD B2C application client ID |
-| `apim_subscription_key` | Azure API Management subscription key |
-| `api_resource` | Azure AD B2C API resource identifier |
+| `client_id` | Azure AD B2C client ID |
+| `apim_subscription_key` | Azure APIM subscription key |
+| `api_resource` | Azure AD B2C API resource ID |
 
-Optional parameters with defaults:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `auth_tenant` | `konnectkohler.onmicrosoft.com` | Azure AD B2C tenant |
-| `auth_policy` | `B2C_1_ROPC_Auth` | Azure AD B2C policy |
+See [API.md](API.md) for full API documentation.
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
+make deps    # Install dependencies
+make check   # Run lint, typecheck, tests
+make help    # Show all targets
 ```
+
+See [Makefile](Makefile) for all available targets.
+
+## License
+
+MIT

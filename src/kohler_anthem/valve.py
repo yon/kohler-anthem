@@ -5,10 +5,12 @@ The valve protocol uses 4-byte hex strings per valve:
 
 Where:
     - prefix: Valve identifier (0x01=primary, 0x11-0x71=secondary 1-7)
-    - temperature: Celsius value as byte (e.g., 38°C = 0x26)
-    - flow: Flow percentage 0-100 as byte
+    - temperature: Encoded as (celsius - 25.6) * 10 (e.g., 37.7°C/100°F = 0x79)
+    - flow: 0-200 scale byte (0=0%, 100=50%, 200=100%)
     - mode: Outlet state (0x00=off, 0x01=shower, 0x02=tub, 0x03=tub+handheld, 0x40=stop)
 """
+
+from typing import Any
 
 from .models.enums import Outlet, ValveMode, ValvePrefix
 
@@ -39,15 +41,20 @@ def encode_valve_command(
     if not 0 <= flow_percent <= 100:
         raise ValueError(f"Flow must be 0-100%, got {flow_percent}")
 
-    temp_byte = int(temperature_celsius)
-    flow_byte = flow_percent
+    # Temperature encoding: temp_byte = (celsius - 25.6) * 10
+    # Example: 37.7°C (100°F) -> (37.7 - 25.6) * 10 = 121 = 0x79
+    temp_byte = round((temperature_celsius - 25.6) * 10)
+    temp_byte = max(0, min(255, temp_byte))  # Clamp to valid byte range
+
+    # Flow encoding: API uses 0-200 scale, convert from 0-100%
+    flow_byte = round(flow_percent * 2)
     mode_byte = int(mode)
     prefix_byte = int(prefix)
 
     return f"{prefix_byte:02X}{temp_byte:02X}{flow_byte:02X}{mode_byte:02X}"
 
 
-def decode_valve_command(hex_string: str) -> dict:
+def decode_valve_command(hex_string: str) -> dict[str, Any]:
     """Decode a valve hex string to its components.
 
     Args:
@@ -81,10 +88,15 @@ def decode_valve_command(hex_string: str) -> dict:
     except ValueError:
         mode = mode_byte  # type: ignore[assignment]
 
+    # Temperature decoding: celsius = temp_byte / 10 + 25.6
+    # Example: 0x79 (121) -> 121/10 + 25.6 = 37.7°C (100°F)
+    temperature_celsius = temp_byte / 10 + 25.6
+
     return {
         "prefix": prefix,
-        "temperature_celsius": temp_byte,
-        "flow_percent": flow_byte,
+        "temperature_celsius": temperature_celsius,
+        # Commands use 0-200 scale, convert to 0-100%
+        "flow_percent": flow_byte // 2,
         "mode": mode,
     }
 

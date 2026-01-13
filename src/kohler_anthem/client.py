@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -54,7 +55,7 @@ class KohlerAnthemClient:
         self._owns_session = False
         self._customer_id: str | None = None
 
-    async def __aenter__(self) -> "KohlerAnthemClient":
+    async def __aenter__(self) -> KohlerAnthemClient:
         """Async context manager entry."""
         await self.connect()
         return self
@@ -122,7 +123,7 @@ class KohlerAnthemClient:
             async with self._session.request(
                 method, url, headers=headers, params=params, json=json
             ) as response:
-                data = await response.json()
+                data: dict[str, Any] = await response.json()
 
                 if response.status == 404:
                     raise DeviceNotFoundError(
@@ -350,6 +351,7 @@ class KohlerAnthemClient:
         }
         if tenant_id:
             payload["tenantId"] = tenant_id
+
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
 
@@ -490,3 +492,48 @@ class KohlerAnthemClient:
         return await self.control_valve(
             device_id, valve_control, tenant_id=self._customer_id, sku=sku
         )
+
+    # =========================================================================
+    # IoT Hub / Mobile Settings
+    # =========================================================================
+
+    async def register_mobile_device(
+        self,
+        tenant_id: str,
+        mobile_device_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Register mobile device and get IoT Hub credentials.
+
+        This endpoint returns the credentials needed to connect to Azure IoT Hub
+        for real-time state updates via MQTT.
+
+        Args:
+            tenant_id: Customer/tenant ID
+            mobile_device_id: Optional device ID (generated if not provided)
+
+        Returns:
+            Dictionary with IoT Hub settings including:
+            - ioTHub: IoT Hub hostname
+            - deviceId: MQTT client device ID
+            - connectionString: Full connection string
+            - username: MQTT username
+            - password: SAS token for authentication
+        """
+        if not mobile_device_id:
+            mobile_device_id = uuid.uuid4().hex[:16]
+
+        endpoint = ENDPOINTS["mobile_settings"]
+        # Match the format used by the mobile app
+        payload = {
+            "tenantId": tenant_id,
+            "mobileDeviceId": mobile_device_id,
+            "username": "HomeAssistant",
+            "os": "Android",  # Must be Android or iOS
+            "devicePlatform": "FirebaseCloudMessagingV1",
+            "deviceHandle": f"ha_{mobile_device_id}",  # Dummy FCM token
+            "tags": ["FirmwareUpdate"],
+        }
+
+        data = await self._request("POST", endpoint, json=payload)
+        result: dict[str, Any] = data.get("ioTHubSettings", {})
+        return result
