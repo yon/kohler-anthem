@@ -2,6 +2,8 @@
 
 Python library for controlling Kohler Anthem digital showers.
 
+> **DISCLAIMER**: This is an unofficial library developed independently for personal use. It is not affiliated with, endorsed by, or supported by Kohler Co. This library was reverse-engineered from the Kohler Konnect mobile app and may break at any time if Kohler modifies their APIs. The author provides no warranty, assumes no liability, and offers no support for this software. Use at your own risk. The author is not responsible for any damage to your devices, property, or any other consequences resulting from the use of this library.
+
 ## Installation
 
 ```bash
