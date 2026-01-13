@@ -71,3 +71,8 @@ dmypy.json
 
 # ruff
 .ruff_cache/
+
+# Dev artifacts (APKs, captures, credentials)
+dev/apk/
+dev/output/
+*.apk
