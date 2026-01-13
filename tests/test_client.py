@@ -10,8 +10,8 @@ from kohler_anthem import (
     KohlerConfig,
     Outlet,
 )
-from kohler_anthem.exceptions import ApiError, DeviceNotFoundError
 from kohler_anthem.const import API_BASE
+from kohler_anthem.exceptions import ApiError, DeviceNotFoundError
 
 
 @pytest.fixture

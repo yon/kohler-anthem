@@ -108,7 +108,7 @@ class PresetResponse(KohlerBaseModel):
     device_id: str = Field(default="", alias="deviceId")
     sku: str = Field(default="GCS")
     tenant_id: str = Field(default="", alias="tenantId")
-    presets: list[Preset] = Field(default_factory=list)
+    presets: list[Preset] = Field(default_factory=list, alias="gcsPresetExperienceDetails")
 
     def get_preset(self, preset_id: int) -> Preset | None:
         """Get preset by ID.

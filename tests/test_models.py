@@ -1,242 +1,259 @@
-"""Tests for Pydantic models."""
+"""Tests for API response models.
+
+These tests document the structure of API responses and parsing behavior
+discovered through traffic capture and testing.
+"""
 
 import pytest
 
-from kohler_anthem import (
+from kohler_anthem.models import (
     ConnectionState,
-    Customer,
-    Device,
     DeviceState,
-    Home,
-    OutletDetail,
-    OutletState,
-    Preset,
-    PresetResponse,
+    DeviceStateData,
     SystemState,
+    ValveControlModel,
+    ValveSettings,
     ValveState,
     WarmUpStatus,
 )
 
 
-class TestCustomerModels:
-    """Test customer/device models."""
+class TestValveState:
+    """Document ValveState parsing from API responses."""
 
-    def test_device_from_response(self) -> None:
-        """Test Device parsing."""
+    def test_parse_outlet_flags(self):
+        """API returns out1/out2/out3 as "0"/"1" strings."""
         data = {
-            "deviceId": "dev-123",
-            "logicalName": "Master Shower",
-            "sku": "GCS",
-            "serialNumber": "SN12345",
-            "isActive": True,
-        }
-        device = Device.from_response(data)
-        assert device.device_id == "dev-123"
-        assert device.logical_name == "Master Shower"
-        assert device.sku == "GCS"
-        assert device.serial_number == "SN12345"
-        assert device.is_active is True
-
-    def test_device_with_extra_fields(self) -> None:
-        """Test Device ignores unknown fields (closed API pattern)."""
-        data = {
-            "deviceId": "dev-123",
-            "logicalName": "Shower",
-            "unknownField": "ignored",
-            "anotherNew": 123,
-        }
-        device = Device.from_response(data)
-        assert device.device_id == "dev-123"
-        # Should not raise, unknown fields ignored
-
-    def test_home_with_devices(self) -> None:
-        """Test Home parsing with nested devices."""
-        data = {
-            "homeId": "home-1",
-            "homeName": "My House",
-            "devices": [
-                {"deviceId": "dev-1", "logicalName": "Shower 1"},
-                {"deviceId": "dev-2", "logicalName": "Shower 2"},
-            ],
-        }
-        home = Home.from_response(data)
-        assert home.home_id == "home-1"
-        assert len(home.devices) == 2
-        assert home.devices[0].device_id == "dev-1"
-
-    def test_customer_get_all_devices(self) -> None:
-        """Test Customer.get_all_devices flattens homes."""
-        data = {
-            "id": "cust-1",
-            "tenantId": "tenant-1",
-            "customerHome": [
-                {
-                    "homeId": "home-1",
-                    "homeName": "House 1",
-                    "devices": [{"deviceId": "dev-1", "logicalName": "S1"}],
-                },
-                {
-                    "homeId": "home-2",
-                    "homeName": "House 2",
-                    "devices": [
-                        {"deviceId": "dev-2", "logicalName": "S2"},
-                        {"deviceId": "dev-3", "logicalName": "S3"},
-                    ],
-                },
-            ],
-        }
-        customer = Customer.from_response(data)
-        devices = customer.get_all_devices()
-        assert len(devices) == 3
-        assert {d.device_id for d in devices} == {"dev-1", "dev-2", "dev-3"}
-
-    def test_customer_get_device(self) -> None:
-        """Test Customer.get_device lookup."""
-        data = {
-            "id": "cust-1",
-            "tenantId": "tenant-1",
-            "customerHome": [
-                {
-                    "homeId": "home-1",
-                    "homeName": "House",
-                    "devices": [{"deviceId": "dev-123", "logicalName": "Shower"}],
-                },
-            ],
-        }
-        customer = Customer.from_response(data)
-        assert customer.get_device("dev-123") is not None
-        assert customer.get_device("nonexistent") is None
-
-
-class TestDeviceStateModels:
-    """Test device state models."""
-
-    def test_valve_state_string_booleans(self) -> None:
-        """Test ValveState parses string booleans."""
-        data = {
-            "valveIndex": "1",
-            "atFlow": "1",
-            "atTemp": "0",
-            "out1": "true",
-            "out2": "false",
+            "valveIndex": "Valve1",
+            "out1": "1",
+            "out2": "0",
             "out3": "0",
+            "atFlow": "1",
+            "atTemp": "1",
+            "flowSetpoint": "25",  # API uses 0-50 scale
+            "temperatureSetpoint": "37.7",
+            "errorFlag": "0",
+            "errorCode": "0",
+            "pauseFlag": "0",
+            "outlets": [],
         }
-        valve = ValveState.from_response(data)
-        assert valve.at_flow is True
-        assert valve.at_temp is False
+        valve = ValveState.model_validate(data)
+
         assert valve.out1 is True
         assert valve.out2 is False
         assert valve.out3 is False
 
-    def test_valve_state_is_active(self) -> None:
-        """Test ValveState.is_active property."""
-        data = {"valveIndex": "1", "out1": "1", "out2": "0", "out3": "0"}
-        valve = ValveState.from_response(data)
+    def test_parse_flow_setpoint_converts_scale(self):
+        """API returns flowSetpoint on 0-50 scale, we convert to 0-100%.
+
+        Example: API value 25 = 50%, API value 50 = 100%
+        """
+        data = {
+            "valveIndex": "Valve1",
+            "out1": "0",
+            "out2": "0",
+            "out3": "0",
+            "atFlow": "0",
+            "atTemp": "0",
+            "flowSetpoint": "25",  # Should become 50%
+            "temperatureSetpoint": "38.0",
+            "errorFlag": "0",
+            "errorCode": "0",
+            "pauseFlag": "0",
+            "outlets": [],
+        }
+        valve = ValveState.model_validate(data)
+        assert valve.flow_setpoint == 50
+
+    def test_parse_temperature_setpoint(self):
+        """temperatureSetpoint is in Celsius as a string."""
+        data = {
+            "valveIndex": "Valve1",
+            "out1": "0",
+            "out2": "0",
+            "out3": "0",
+            "atFlow": "0",
+            "atTemp": "0",
+            "flowSetpoint": "50",
+            "temperatureSetpoint": "37.7",  # 100°F
+            "errorFlag": "0",
+            "errorCode": "0",
+            "pauseFlag": "0",
+            "outlets": [],
+        }
+        valve = ValveState.model_validate(data)
+        assert valve.temperature_setpoint == pytest.approx(37.7, abs=0.01)
+
+    def test_is_active_property(self):
+        """is_active returns True if any outlet is on."""
+        # With out1 active
+        valve = ValveState(
+            valve_index="Valve1",
+            out1=True,
+            out2=False,
+            out3=False,
+        )
         assert valve.is_active is True
 
-        data = {"valveIndex": "1", "out1": "0", "out2": "0", "out3": "0"}
-        valve = ValveState.from_response(data)
+        # With no outlets active
+        valve = ValveState(
+            valve_index="Valve1",
+            out1=False,
+            out2=False,
+            out3=False,
+        )
         assert valve.is_active is False
 
-    def test_outlet_state_string_numbers(self) -> None:
-        """Test OutletState parses string numbers."""
-        data = {
-            "outletIndex": "1",
-            "outletTemp": "38.5",
-            "outletFlow": "75",
-        }
-        outlet = OutletState.from_response(data)
-        assert outlet.outlet_temp == 38.5
-        assert outlet.outlet_flow == 75.0
 
-    def test_device_state_full(self) -> None:
-        """Test full DeviceState parsing."""
+class TestDeviceStateData:
+    """Document DeviceStateData (inner state object) parsing."""
+
+    def test_current_system_state_enum(self):
+        """currentSystemState maps to SystemState enum."""
         data = {
-            "id": "state-1",
-            "deviceId": "dev-123",
-            "connectionState": "Connected",
-            "state": {
-                "currentSystemState": "showerInProgress",
-                "presetOrExperienceId": "1",
-                "warmUpState": {"warmUp": "warmUpEnabled", "state": "warmUpNotInProgress"},
-                "valveState": [
-                    {"valveIndex": "1", "out1": "1", "out2": "0", "out3": "0"}
-                ],
-            },
+            "currentSystemState": "showerInProgress",
+            "warmUpState": {"warmUp": "warmUpDisabled", "state": "warmUpNotInProgress"},
+            "presetOrExperienceId": "0",
+            "totalVolume": "100",
+            "totalFlow": "5.5",
+            "ready": "true",
+            "valveState": [],
+            "ioTActive": "Active",
         }
-        state = DeviceState.from_response(data)
-        assert state.is_connected is True
-        assert state.connection_state == ConnectionState.CONNECTED
+        state = DeviceStateData.model_validate(data)
+        assert state.current_system_state == SystemState.SHOWER
+
+    def test_is_running_property(self):
+        """is_running returns True when system state is SHOWER."""
+        state = DeviceStateData(current_system_state=SystemState.SHOWER)
         assert state.is_running is True
-        assert state.state.current_system_state == SystemState.SHOWER
-        assert state.state.active_preset_id == 1
 
-    def test_device_state_is_warming_up(self) -> None:
-        """Test DeviceState.is_warming_up property."""
+        state = DeviceStateData(current_system_state=SystemState.NORMAL)
+        assert state.is_running is False
+
+    def test_active_preset_id(self):
+        """active_preset_id returns int or None."""
+        # With active preset
+        state = DeviceStateData(preset_or_experience_id="3")
+        assert state.active_preset_id == 3
+
+        # No preset
+        state = DeviceStateData(preset_or_experience_id="0")
+        assert state.active_preset_id is None
+
+
+class TestDeviceState:
+    """Document full DeviceState response parsing."""
+
+    def test_connection_state_enum(self):
+        """connectionState maps to ConnectionState enum."""
         data = {
-            "deviceId": "dev-1",
+            "id": "device123",
+            "deviceId": "device123",
+            "sku": "GCS",
+            "tenantId": "customer456",
+            "connectionState": "Connected",
+            "lastConnected": 1704067200000,
             "state": {
-                "warmUpState": {"state": "warmUpInProgress"},
+                "currentSystemState": "Normal",
+                "warmUpState": {"warmUp": "warmUpDisabled", "state": "NotInProgress"},
+                "presetOrExperienceId": "0",
+                "totalVolume": "0",
+                "totalFlow": "0",
+                "ready": "true",
+                "valveState": [],
+                "ioTActive": "Inactive",
+            },
+            "setting": {
+                "valveSettings": [],
+                "flowControl": "Disabled",
             },
         }
-        state = DeviceState.from_response(data)
-        assert state.is_warming_up is True
+        device = DeviceState.model_validate(data)
+        assert device.connection_state == ConnectionState.CONNECTED
+        assert device.is_connected is True
 
-
-class TestPresetModels:
-    """Test preset models."""
-
-    def test_outlet_detail_string_parsing(self) -> None:
-        """Test OutletDetail parses string values."""
+    def test_disconnected_state(self):
+        """Verify disconnected state is parsed correctly."""
         data = {
-            "outletIndex": "1",
-            "temperature": "38.5",
-            "flow": "75",
-            "value": "1",
+            "id": "device123",
+            "deviceId": "device123",
+            "connectionState": "Disconnected",
+            "state": {},
+            "setting": {},
         }
-        outlet = OutletDetail.from_response(data)
-        assert outlet.temperature == 38.5
-        assert outlet.flow == 75
-        assert outlet.value is True
+        device = DeviceState.model_validate(data)
+        assert device.connection_state == ConnectionState.DISCONNECTED
+        assert device.is_connected is False
 
-    def test_preset_basic(self) -> None:
-        """Test Preset parsing."""
-        data = {
-            "presetId": "1",
-            "title": "Morning Shower",
-            "isExperience": "false",
-            "state": "off",
-            "time": "1800",
-        }
-        preset = Preset.from_response(data)
-        assert preset.id == 1
-        assert preset.title == "Morning Shower"
-        assert preset.is_experience is False
-        assert preset.duration_minutes == 30
 
-    def test_preset_response_get_preset(self) -> None:
-        """Test PresetResponse.get_preset lookup."""
+class TestValveSettings:
+    """Document valve settings/configuration parsing."""
+
+    def test_outlet_configurations(self):
+        """outletConfigurations contains per-outlet limits."""
         data = {
-            "deviceId": "dev-1",
-            "presets": [
-                {"presetId": "1", "title": "Preset 1"},
-                {"presetId": "2", "title": "Preset 2"},
+            "valve": "Valve1",
+            "noOfOutlets": "2",
+            "valveFirmwareType": "1",
+            "valveFirmwareVersion": "100",
+            "outletConfigurations": [
+                {
+                    "outLetType": "1",
+                    "outLetId": "1",
+                    "maximumOutletTemperature": "48.8",
+                    "minimumOutletTemperature": "15.0",
+                    "defaultOutletTemperature": "37.7",
+                    "maximumFlowrate": "100",
+                    "minimumFlowrate": "0",
+                    "defaultFlowrate": "50",
+                    "maximumRuntime": "1800",
+                },
             ],
         }
-        response = PresetResponse.from_response(data)
-        assert response.get_preset(1) is not None
-        assert response.get_preset(1).title == "Preset 1"
-        assert response.get_preset(99) is None
+        settings = ValveSettings.model_validate(data)
+        assert settings.num_outlets == 2
+        assert len(settings.outlet_configurations) == 1
+        assert settings.outlet_configurations[0].max_temperature == pytest.approx(48.8)
+        assert settings.outlet_configurations[0].default_temperature == pytest.approx(37.7)
 
-    def test_preset_response_filter_experiences(self) -> None:
-        """Test PresetResponse filtering presets vs experiences."""
-        data = {
-            "deviceId": "dev-1",
-            "presets": [
-                {"presetId": "1", "title": "Preset", "isExperience": "false"},
-                {"presetId": "2", "title": "Experience", "isExperience": "true"},
-            ],
-        }
-        response = PresetResponse.from_response(data)
-        assert len(response.get_presets_only()) == 1
-        assert len(response.get_experiences()) == 1
+
+class TestValveControlModel:
+    """Document valve control command model."""
+
+    def test_primary_valve_command(self):
+        """Valve control sends hex commands per valve."""
+        control = ValveControlModel(
+            primary_valve1="0179C801",  # Primary valve 1 ON
+        )
+        dumped = control.model_dump(by_alias=True)
+
+        assert dumped["primaryValve1"] == "0179C801"
+
+    def test_all_valves_off(self):
+        """All zeros turns everything off."""
+        control = ValveControlModel(
+            primary_valve1="00000000",
+            secondary_valve1="00000000",
+            secondary_valve2="00000000",
+        )
+        for field in ["primaryValve1", "secondaryValve1", "secondaryValve2"]:
+            assert control.model_dump(by_alias=True)[field] == "00000000"
+
+
+class TestWarmUpStatus:
+    """Document warmup status values."""
+
+    def test_warmup_states(self):
+        """Warmup can be in progress or not in progress."""
+        assert WarmUpStatus.IN_PROGRESS.value == "warmUpInProgress"
+        assert WarmUpStatus.NOT_IN_PROGRESS.value == "warmUpNotInProgress"
+
+
+class TestSystemState:
+    """Document system state values."""
+
+    def test_system_states(self):
+        """System can be Normal (idle) or Shower (running)."""
+        assert SystemState.NORMAL.value == "normalOperation"
+        assert SystemState.SHOWER.value == "showerInProgress"

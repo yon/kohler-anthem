@@ -16,9 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from kohler_anthem import (
     KohlerAnthemClient,
-    KohlerConfig,
-    Outlet,
     KohlerAnthemError,
+    KohlerConfig,
 )
 
 
@@ -99,7 +98,7 @@ async def main() -> None:
             print("=" * 60)
 
             state = await client.get_device_state(device_id)
-            print(f"\n✅ Device State:")
+            print("\n✅ Device State:")
             print(f"   Connected: {state.is_connected}")
             print(f"   Running: {state.is_running}")
             print(f"   Warming up: {state.is_warming_up}")

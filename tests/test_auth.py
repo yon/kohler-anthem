@@ -143,7 +143,9 @@ class TestKohlerAuth:
         })
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+        )
 
         token = await auth.authenticate(mock_session)
 
@@ -163,7 +165,9 @@ class TestKohlerAuth:
         })
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+        )
 
         with pytest.raises(AuthenticationError) as exc_info:
             await auth.authenticate(mock_session)
@@ -185,7 +189,9 @@ class TestKohlerAuth:
         })
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+        )
 
         token = await auth.ensure_valid_token(mock_session)
 

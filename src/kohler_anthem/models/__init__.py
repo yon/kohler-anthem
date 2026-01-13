@@ -28,38 +28,32 @@ from .state import (
 )
 
 __all__ = [
-    # Base
-    "KohlerBaseModel",
-    # Command
     "CommandResponse",
-    "ValveControlModel",
-    # Customer
+    "ConnectionState",
     "Customer",
     "Device",
-    "Home",
-    # Enums
-    "ConnectionState",
-    "FlowUnit",
-    "Outlet",
-    "OutletType",
-    "SystemState",
-    "TemperatureUnit",
-    "ValveMode",
-    "ValvePrefix",
-    "WarmUpStatus",
-    # Preset
-    "OutletDetail",
-    "Preset",
-    "PresetResponse",
-    "ValveDetail",
-    # State
     "DeviceSettings",
     "DeviceState",
     "DeviceStateData",
     "FirmwareInfo",
+    "FlowUnit",
+    "Home",
+    "KohlerBaseModel",
+    "Outlet",
     "OutletConfiguration",
+    "OutletDetail",
     "OutletState",
+    "OutletType",
+    "Preset",
+    "PresetResponse",
+    "SystemState",
+    "TemperatureUnit",
+    "ValveControlModel",
+    "ValveDetail",
+    "ValveMode",
+    "ValvePrefix",
     "ValveSettings",
     "ValveState",
     "WarmUpState",
+    "WarmUpStatus",
 ]
