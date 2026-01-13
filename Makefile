@@ -1,3 +1,6 @@
+-include .env
+export
+
 .PHONY: build check clean deps format help lint publish test typecheck
 .DEFAULT_GOAL := help
 
@@ -24,7 +27,7 @@ lint: ## Run ruff linter
 	python3 -m ruff check .
 
 publish: clean build ## Publish to PyPI
-	@test -f .env && . ./.env; python3 -m twine upload dist/*
+	python3 -m twine upload dist/*
 
 test: ## Run tests
 	python3 -m pytest
