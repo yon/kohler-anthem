@@ -1,4 +1,4 @@
-.PHONY: build check clean deps format help lint test typecheck
+.PHONY: build check clean deps format help lint publish test typecheck
 .DEFAULT_GOAL := help
 
 build: ## Build the package
@@ -22,6 +22,9 @@ help: ## Show this help message
 
 lint: ## Run ruff linter
 	python3 -m ruff check .
+
+publish: clean build ## Publish to PyPI
+	@test -f .env && . ./.env; python3 -m twine upload dist/*
 
 test: ## Run tests
 	python3 -m pytest
