@@ -112,7 +112,7 @@ def main():
         if captured_key:
             print(f"APIM key saved to: {CAPTURED_FILE}")
             print()
-            print("Next step: make env")
+            print("Next step: make credentials-generate")
         else:
             print("No APIM key was captured.")
             print("Make sure you logged into the app before pressing Ctrl+C.")

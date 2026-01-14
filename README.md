@@ -51,7 +51,10 @@ asyncio.run(main())
 | `apim_subscription_key` | Azure APIM subscription key |
 | `api_resource` | Azure AD B2C API resource ID |
 
-See [API.md](API.md) for full API documentation.
+### Obtaining Credentials
+
+The `client_id`, `api_resource`, and `apim_subscription_key` must be extracted from the Kohler Konnect mobile app. See [credential-extraction/](credential-extraction/) for automated tools and instructions.
+
 
 ## Development
 

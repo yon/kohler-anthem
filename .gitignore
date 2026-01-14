@@ -72,7 +72,10 @@ dmypy.json
 # ruff
 .ruff_cache/
 
-# Dev artifacts (APKs, captures, credentials)
+# Credential extraction outputs
+credential-extraction/.build/
+credential-extraction/kohler-credentials.yaml
+
+# Dev (reverse engineering)
 dev/apk/
 dev/output/
-*.apk
