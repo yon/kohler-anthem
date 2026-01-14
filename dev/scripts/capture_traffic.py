@@ -4,7 +4,6 @@
 This script provides instructions and can help set up network monitoring tools.
 """
 
-import sys
 
 
 def print_instructions():

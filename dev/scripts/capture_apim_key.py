@@ -10,7 +10,6 @@ Usage:
 """
 
 import json
-import os
 from pathlib import Path
 
 from mitmproxy import http

@@ -31,9 +31,8 @@ def extract_strings_from_dex():
                 endpoints.update(urls)
                 
                 # Look for API endpoint patterns
-                if re.search(r"(api|endpoint|device|iot)", line, re.I):
-                    if "http" in line.lower():
-                        endpoints.add(line.strip())
+                if re.search(r"(api|endpoint|device|iot)", line, re.I) and "http" in line.lower():
+                    endpoints.add(line.strip())
         except Exception as e:
             print(f"Error processing {dex_file}: {e}", file=sys.stderr)
     
@@ -48,7 +47,8 @@ def main():
     endpoints = extract_strings_from_dex()
     
     # Filter and categorize
-    api_endpoints = [e for e in endpoints if "api" in e.lower() or "kohler" in e.lower() or "azure" in e.lower()]
+    api_keywords = ["api", "kohler", "azure"]
+    api_endpoints = [e for e in endpoints if any(k in e.lower() for k in api_keywords)]
     device_endpoints = [e for e in endpoints if "device" in e.lower()]
     iot_endpoints = [e for e in endpoints if "iot" in e.lower() or "hub" in e.lower()]
     

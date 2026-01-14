@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Quick test script to find and test Kohler Anthem API."""
 
-import requests
 import base64
 import json
 import sys
+
+import requests
 
 if len(sys.argv) < 2:
     print("Usage: python3 test_api.py <IP_ADDRESS>")
@@ -21,7 +22,7 @@ def test(endpoint, params=None):
         try:
             decoded = base64.b64decode(r.text)
             print(f"Decoded: {json.loads(decoded)}")
-        except:
+        except Exception:
             pass
     except Exception as e:
         print(f"{endpoint}: ERROR - {e}")

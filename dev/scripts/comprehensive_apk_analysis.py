@@ -83,7 +83,8 @@ def extract_models(strings):
         for s in strings:
             matches = re.finditer(pattern, s)
             for match in matches:
-                if "anthem" in match.group(1).lower() or "device" in match.group(1).lower() or "iot" in match.group(1).lower():
+                name = match.group(1).lower()
+                if "anthem" in name or "device" in name or "iot" in name:
                     models[category].append(match.group(1))
     
     return {k: sorted(set(v)) for k, v in models.items()}
@@ -151,7 +152,8 @@ def main():
     urls = extract_urls(strings)
     print(f"Found {len(urls)} URLs")
     print("\nRelevant URLs:")
-    for url in [u for u in urls if any(x in u.lower() for x in ["kohler", "azure", "api", "iot", "device"])]:
+    keywords = ["kohler", "azure", "api", "iot", "device"]
+    for url in [u for u in urls if any(x in u.lower() for x in keywords)]:
         print(f"  {url}")
     print()
     

@@ -19,9 +19,9 @@ sys.path.insert(0, "/Users/yon/src/github.com/yon/kohler-anthem/src")
 
 from kohler_anthem import (
     KohlerAnthemClient,
+    KohlerAnthemError,
     KohlerConfig,
     Outlet,
-    KohlerAnthemError,
 )
 
 
@@ -112,7 +112,7 @@ async def main() -> None:
             print("=" * 60)
 
             state = await client.get_device_state(device_id)
-            print(f"\n✅ Device State:")
+            print("\n✅ Device State:")
             print(f"   Connected: {state.is_connected}")
             print(f"   Running: {state.is_running}")
             print(f"   Warming up: {state.is_warming_up}")

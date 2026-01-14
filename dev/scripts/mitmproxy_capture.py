@@ -2,15 +2,16 @@
 mitmproxy addon to capture Kohler API traffic.
 
 Usage:
-    ~/Library/Python/3.9/bin/mitmdump -s dev/scripts/mitmproxy_capture.py -w dev/output/mitmproxy_capture.flow
+    mitmdump -s dev/scripts/mitmproxy_capture.py -w dev/output/capture.flow
 
 Or with mitmweb for interactive viewing:
-    ~/Library/Python/3.9/bin/mitmweb -s dev/scripts/mitmproxy_capture.py
+    mitmweb -s dev/scripts/mitmproxy_capture.py
 """
 
 import json
 from datetime import datetime
-from mitmproxy import http, ctx
+
+from mitmproxy import ctx, http
 
 # Filter for Kohler API traffic
 KOHLER_HOSTS = [
@@ -55,7 +56,7 @@ class KohlerCapture:
             try:
                 body = json.loads(flow.request.content)
                 ctx.log.info(f"    Body: {json.dumps(body, indent=2)}")
-            except:
+            except Exception:
                 ctx.log.info(f"    Body: {flow.request.content[:500]}")
 
         # Write to file
@@ -77,7 +78,7 @@ class KohlerCapture:
             try:
                 body = json.loads(flow.response.content)
                 ctx.log.info(f"    Body: {json.dumps(body, indent=2)}")
-            except:
+            except Exception:
                 content = flow.response.content[:500]
                 ctx.log.info(f"    Body: {content}")
 
@@ -95,28 +96,28 @@ class KohlerCapture:
             if direction == "REQUEST":
                 f.write(f"Method: {flow.request.method}\n")
                 f.write(f"URL: {flow.request.pretty_url}\n")
-                f.write(f"\nHeaders:\n")
+                f.write("\nHeaders:\n")
                 for k, v in flow.request.headers.items():
                     f.write(f"  {k}: {v}\n")
                 if flow.request.content:
-                    f.write(f"\nBody:\n")
+                    f.write("\nBody:\n")
                     try:
                         body = json.loads(flow.request.content)
                         f.write(json.dumps(body, indent=2))
-                    except:
+                    except Exception:
                         f.write(str(flow.request.content))
                     f.write("\n")
             else:
                 f.write(f"Status: {flow.response.status_code}\n")
-                f.write(f"\nHeaders:\n")
+                f.write("\nHeaders:\n")
                 for k, v in flow.response.headers.items():
                     f.write(f"  {k}: {v}\n")
                 if flow.response.content:
-                    f.write(f"\nBody:\n")
+                    f.write("\nBody:\n")
                     try:
                         body = json.loads(flow.response.content)
                         f.write(json.dumps(body, indent=2))
-                    except:
+                    except Exception:
                         f.write(str(flow.response.content[:2000]))
                     f.write("\n")
 

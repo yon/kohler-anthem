@@ -9,6 +9,7 @@ Usage:
     python3 capture_apim_via_frida.py
 """
 
+import contextlib
 import json
 import os
 import re
@@ -116,10 +117,8 @@ def main():
             print("No APIM key was captured.")
             print("Make sure you logged into the app before pressing Ctrl+C.")
     finally:
-        try:
+        with contextlib.suppress(Exception):
             process.terminate()
-        except:
-            pass
 
     return 0 if captured_key else 1
 

@@ -5,9 +5,7 @@ Loads scripts/frida_bypass.js for bypasses, then dev/scripts/frida_capture_hooks
 for traffic capture. Output is saved to dev/output/capture_<timestamp>.log.
 """
 
-import os
 import shutil
-import signal
 import subprocess
 import sys
 from datetime import datetime
@@ -91,7 +89,7 @@ def main():
     try:
         with open(output_file, "w") as f:
             # Write header
-            f.write(f"# Kohler Konnect Traffic Capture\n")
+            f.write("# Kohler Konnect Traffic Capture\n")
             f.write(f"# Started: {datetime.now().isoformat()}\n")
             f.write(f"# Bypass: {BYPASS_SCRIPT}\n")
             f.write(f"# Capture: {CAPTURE_SCRIPT}\n")

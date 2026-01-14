@@ -27,7 +27,7 @@ def find_msal_config(decompiled_path: Path) -> dict:
     scope_pattern = re.compile(r'https://[^/]+/([a-f0-9-]{36})/', re.IGNORECASE)
 
     # Walk through all files
-    for root, dirs, files in os.walk(decompiled_path):
+    for root, _dirs, files in os.walk(decompiled_path):
         for filename in files:
             if not filename.endswith(('.java', '.json', '.xml', '.smali')):
                 continue

@@ -20,7 +20,8 @@ import json
 import os
 import re
 from datetime import datetime
-from mitmproxy import http, ctx
+
+from mitmproxy import ctx, http
 
 # Output directory for captured data
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "captured_traffic")
@@ -81,11 +82,12 @@ def extract_secrets(flow: http.HTTPFlow) -> dict:
             body = flow.request.content.decode("utf-8", errors="ignore")
 
             # Look for connection strings
-            conn_str_match = re.search(r'HostName=[^;]+;DeviceId=[^;]+;SharedAccessKey=[^"}\s]+', body)
+            conn_str_pattern = r'HostName=[^;]+;DeviceId=[^;]+;SharedAccessKey=[^"}\s]+'
+            conn_str_match = re.search(conn_str_pattern, body)
             if conn_str_match:
                 secrets["connection_string"] = conn_str_match.group()
                 captured_data["connection_strings"].add(conn_str_match.group())
-                ctx.log.info(f"*** FOUND CONNECTION STRING")
+                ctx.log.info("*** FOUND CONNECTION STRING")
 
             # Look for device IDs
             device_id_match = re.search(r'"deviceId"\s*:\s*"([^"]+)"', body, re.IGNORECASE)
@@ -101,11 +103,12 @@ def extract_secrets(flow: http.HTTPFlow) -> dict:
             body = flow.response.content.decode("utf-8", errors="ignore")
 
             # Look for connection strings
-            conn_str_match = re.search(r'HostName=[^;]+;DeviceId=[^;]+;SharedAccessKey=[^"}\s]+', body)
+            conn_str_pattern = r'HostName=[^;]+;DeviceId=[^;]+;SharedAccessKey=[^"}\s]+'
+            conn_str_match = re.search(conn_str_pattern, body)
             if conn_str_match:
                 secrets["connection_string"] = conn_str_match.group()
                 captured_data["connection_strings"].add(conn_str_match.group())
-                ctx.log.info(f"*** FOUND CONNECTION STRING IN RESPONSE")
+                ctx.log.info("*** FOUND CONNECTION STRING IN RESPONSE")
 
             # Look for device IDs
             device_id_match = re.search(r'"deviceId"\s*:\s*"([^"]+)"', body, re.IGNORECASE)
@@ -188,7 +191,8 @@ def response(flow: http.HTTPFlow) -> None:
     captured_data["requests"].append(request_info)
 
     # Log important requests
-    ctx.log.info(f"Captured: {flow.request.method} {flow.request.url[:100]} -> {flow.response.status_code if flow.response else 'N/A'}")
+    status = flow.response.status_code if flow.response else 'N/A'
+    ctx.log.info(f"Captured: {flow.request.method} {flow.request.url[:80]} -> {status}")
 
     # Save to file incrementally
     save_captured_data()

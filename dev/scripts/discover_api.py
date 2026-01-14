@@ -67,16 +67,16 @@ def print_response(
         try:
             json_data = resp.json()
             print(f"     JSON: {json.dumps(json_data, indent=6)}")
-        except:
+        except Exception:
             # Try base64 decode
             try:
                 decoded = base64.b64decode(text)
                 try:
                     json_data = json.loads(decoded)
                     print(f"     Base64->JSON: {json.dumps(json_data, indent=6)}")
-                except:
+                except Exception:
                     print(f"     Base64->Text: {decoded[:200]}")
-            except:
+            except Exception:
                 # Print raw text (truncated)
                 preview = text[:200].replace("\n", "\\n")
                 print(f"     Raw: {preview}{'...' if len(text) > 200 else ''}")
