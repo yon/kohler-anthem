@@ -53,7 +53,6 @@ class KohlerAnthemClient:
         self._auth = KohlerAuth(config)
         self._session: aiohttp.ClientSession | None = None
         self._owns_session = False
-        self._customer_id: str | None = None
 
     async def __aenter__(self) -> KohlerAnthemClient:
         """Async context manager entry."""
@@ -145,33 +144,32 @@ class KohlerAnthemClient:
             raise ApiError(f"Network error: {e}") from e
 
     # =========================================================================
-    # Device Discovery
+    # Discovery
     # =========================================================================
 
-    async def get_customer(self, customer_id: str) -> Customer:
+    async def get_customer(self, tenant_id: str) -> Customer:
         """Get customer information with all homes and devices.
 
         Args:
-            customer_id: Customer ID (from login token)
+            tenant_id: Tenant/customer ID (from login token)
 
         Returns:
             Customer with nested homes and devices
         """
-        self._customer_id = customer_id
-        endpoint = ENDPOINTS["customer_devices"].format(customer_id=customer_id)
+        endpoint = ENDPOINTS["customer_devices"].format(customer_id=tenant_id)
         data = await self._request("GET", endpoint)
         return Customer.from_response(data)
 
-    async def discover_devices(self, customer_id: str) -> list[str]:
+    async def discover_devices(self, tenant_id: str) -> list[str]:
         """Discover all device IDs for a customer.
 
         Args:
-            customer_id: Customer ID
+            tenant_id: Tenant/customer ID
 
         Returns:
             List of device IDs
         """
-        customer = await self.get_customer(customer_id)
+        customer = await self.get_customer(tenant_id)
         return [d.device_id for d in customer.get_all_devices()]
 
     # =========================================================================
@@ -191,10 +189,6 @@ class KohlerAnthemClient:
         data = await self._request("GET", endpoint)
         return DeviceState.from_response(data)
 
-    # =========================================================================
-    # Presets
-    # =========================================================================
-
     async def get_presets(self, device_id: str) -> PresetResponse:
         """Get all presets and experiences for a device.
 
@@ -208,8 +202,13 @@ class KohlerAnthemClient:
         data = await self._request("GET", endpoint)
         return PresetResponse.from_response(data)
 
+    # =========================================================================
+    # Preset Control
+    # =========================================================================
+
     async def start_preset(
         self,
+        tenant_id: str,
         device_id: str,
         preset_id: int,
         *,
@@ -218,8 +217,9 @@ class KohlerAnthemClient:
         """Start a preset.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
-            preset_id: Preset ID (1-5)
+            preset_id: Preset ID
             sku: Device SKU
 
         Returns:
@@ -227,16 +227,18 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["preset_control"]
         payload = {
+            "tenantId": tenant_id,
             "deviceId": device_id,
-            "sku": sku,
             "presetId": str(preset_id),
             "command": "start",
+            "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
 
     async def stop_preset(
         self,
+        tenant_id: str,
         device_id: str,
         preset_id: int,
         *,
@@ -245,6 +247,7 @@ class KohlerAnthemClient:
         """Stop a running preset.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             preset_id: Preset ID that is currently running
             sku: Device SKU
@@ -254,10 +257,11 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["preset_control"]
         payload = {
+            "tenantId": tenant_id,
             "deviceId": device_id,
-            "sku": sku,
             "presetId": str(preset_id),
             "command": "stop",
+            "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
@@ -268,14 +272,16 @@ class KohlerAnthemClient:
 
     async def start_warmup(
         self,
+        tenant_id: str,
         device_id: str,
-        preset_id: int = 1,
         *,
+        preset_id: int = 1,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
         """Start warmup mode.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             preset_id: Preset to warm up for
             sku: Device SKU
@@ -285,24 +291,27 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["warmup"]
         payload = {
+            "tenantId": tenant_id,
             "deviceId": device_id,
-            "sku": sku,
             "presetId": str(preset_id),
             "command": "start",
+            "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
 
     async def stop_warmup(
         self,
+        tenant_id: str,
         device_id: str,
-        preset_id: int = 1,
         *,
+        preset_id: int = 1,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
         """Stop warmup mode.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             preset_id: Preset being warmed up
             sku: Device SKU
@@ -312,32 +321,33 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["warmup"]
         payload = {
+            "tenantId": tenant_id,
             "deviceId": device_id,
-            "sku": sku,
             "presetId": str(preset_id),
             "command": "stop",
+            "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
 
     # =========================================================================
-    # Direct Valve Control
+    # Valve Control
     # =========================================================================
 
     async def control_valve(
         self,
+        tenant_id: str,
         device_id: str,
         valve_control: ValveControlModel,
         *,
-        tenant_id: str | None = None,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
         """Send raw valve control command.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             valve_control: Valve control values
-            tenant_id: Tenant ID (customer ID)
             sku: Device SKU
 
         Returns:
@@ -345,18 +355,17 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["valve_control"]
         payload = {
-            "gcsValveControlModel": valve_control.model_dump(by_alias=True),
+            "tenantId": tenant_id,
             "deviceId": device_id,
+            "gcsValveControlModel": valve_control.model_dump(by_alias=True),
             "sku": sku,
         }
-        if tenant_id:
-            payload["tenantId"] = tenant_id
-
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)
 
     async def turn_on_outlet(
         self,
+        tenant_id: str,
         device_id: str,
         outlet: Outlet,
         *,
@@ -367,6 +376,7 @@ class KohlerAnthemClient:
         """Turn on a specific outlet.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             outlet: Which outlet to turn on
             temperature_celsius: Target temperature
@@ -382,12 +392,11 @@ class KohlerAnthemClient:
             flow_percent=flow_percent,
         )
         valve_control = ValveControlModel(primary_valve1=valve_hex)
-        return await self.control_valve(
-            device_id, valve_control, tenant_id=self._customer_id, sku=sku
-        )
+        return await self.control_valve(tenant_id, device_id, valve_control, sku=sku)
 
     async def turn_off(
         self,
+        tenant_id: str,
         device_id: str,
         *,
         sku: str = DEFAULT_SKU,
@@ -395,6 +404,7 @@ class KohlerAnthemClient:
         """Turn off all outlets.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             sku: Device SKU
 
@@ -402,12 +412,11 @@ class KohlerAnthemClient:
             Command response
         """
         valve_control = ValveControlModel(primary_valve1=create_off_command())
-        return await self.control_valve(
-            device_id, valve_control, tenant_id=self._customer_id, sku=sku
-        )
+        return await self.control_valve(tenant_id, device_id, valve_control, sku=sku)
 
     async def set_temperature(
         self,
+        tenant_id: str,
         device_id: str,
         temperature_celsius: float,
         *,
@@ -418,6 +427,7 @@ class KohlerAnthemClient:
         """Set temperature for active outlet.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             temperature_celsius: Target temperature
             outlet: Which outlet
@@ -428,6 +438,7 @@ class KohlerAnthemClient:
             Command response
         """
         return await self.turn_on_outlet(
+            tenant_id,
             device_id,
             outlet,
             temperature_celsius=temperature_celsius,
@@ -437,6 +448,7 @@ class KohlerAnthemClient:
 
     async def set_flow(
         self,
+        tenant_id: str,
         device_id: str,
         flow_percent: int,
         *,
@@ -447,6 +459,7 @@ class KohlerAnthemClient:
         """Set flow rate for active outlet.
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             flow_percent: Flow rate percentage (0-100)
             outlet: Which outlet
@@ -457,6 +470,7 @@ class KohlerAnthemClient:
             Command response
         """
         return await self.turn_on_outlet(
+            tenant_id,
             device_id,
             outlet,
             temperature_celsius=temperature_celsius,
@@ -466,6 +480,7 @@ class KohlerAnthemClient:
 
     async def pause(
         self,
+        tenant_id: str,
         device_id: str,
         *,
         temperature_celsius: float = TEMP_DEFAULT_CELSIUS,
@@ -475,6 +490,7 @@ class KohlerAnthemClient:
         """Pause water flow (keeps session active).
 
         Args:
+            tenant_id: Tenant/customer ID
             device_id: Device ID
             temperature_celsius: Current temperature setting
             flow_percent: Current flow setting
@@ -489,17 +505,16 @@ class KohlerAnthemClient:
             mode=ValveMode.STOP,
         )
         valve_control = ValveControlModel(primary_valve1=valve_hex)
-        return await self.control_valve(
-            device_id, valve_control, tenant_id=self._customer_id, sku=sku
-        )
+        return await self.control_valve(tenant_id, device_id, valve_control, sku=sku)
 
     # =========================================================================
-    # IoT Hub / Mobile Settings
+    # IoT Hub
     # =========================================================================
 
     async def register_mobile_device(
         self,
         tenant_id: str,
+        *,
         mobile_device_id: str | None = None,
     ) -> dict[str, Any]:
         """Register mobile device and get IoT Hub credentials.
@@ -508,7 +523,7 @@ class KohlerAnthemClient:
         for real-time state updates via MQTT.
 
         Args:
-            tenant_id: Customer/tenant ID
+            tenant_id: Tenant/customer ID
             mobile_device_id: Optional device ID (generated if not provided)
 
         Returns:
@@ -523,14 +538,13 @@ class KohlerAnthemClient:
             mobile_device_id = uuid.uuid4().hex[:16]
 
         endpoint = ENDPOINTS["mobile_settings"]
-        # Match the format used by the mobile app
         payload = {
             "tenantId": tenant_id,
             "mobileDeviceId": mobile_device_id,
             "username": "HomeAssistant",
-            "os": "Android",  # Must be Android or iOS
+            "os": "Android",
             "devicePlatform": "FirebaseCloudMessagingV1",
-            "deviceHandle": f"ha_{mobile_device_id}",  # Dummy FCM token
+            "deviceHandle": f"ha_{mobile_device_id}",
             "tags": ["FirmwareUpdate"],
         }
 
