@@ -118,10 +118,15 @@ class KohlerAnthemClient:
 
         url = f"{self._api_base}{endpoint}"
 
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+        _LOGGER.debug("API Request: %s %s payload=%s", method, endpoint, json)
+
         try:
             async with self._session.request(
                 method, url, headers=headers, params=params, json=json
             ) as response:
+                _LOGGER.debug("API Response: status=%s", response.status)
                 data: dict[str, Any] = await response.json()
 
                 if response.status == 404:
