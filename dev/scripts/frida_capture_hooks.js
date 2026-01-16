@@ -33,15 +33,14 @@ if (Java.available) {
                 console.log("\n" + "=".repeat(70));
                 console.log("[HTTP " + method + "] " + url);
 
-                // Log headers
+                // Log headers (full, no truncation)
                 var headers = request.headers();
                 for (var i = 0; i < headers.size(); i++) {
                     var name = headers.name(i);
                     var value = headers.value(i);
-                    if (name.toLowerCase() === "ocp-apim-subscription-key") {
+                    if (name.toLowerCase() === "ocp-apim-subscription-key" ||
+                        name.toLowerCase().indexOf("auth") !== -1) {
                         console.log("  " + name + ": " + value);
-                    } else if (name.toLowerCase().indexOf("auth") !== -1) {
-                        console.log("  " + name + ": " + value.substring(0, 50) + "...");
                     }
                 }
 
@@ -116,7 +115,7 @@ if (Java.available) {
             DeviceClient.$init.overload('java.lang.String', 'com.microsoft.azure.sdk.iot.device.IotHubClientProtocol').implementation = function(connString, protocol) {
                 console.log("\n[IOT HUB] DeviceClient created");
                 console.log("  Protocol: " + protocol);
-                console.log("  Connection: " + connString.substring(0, 50) + "...");
+                console.log("  Connection: " + connString);
                 return this.$init(connString, protocol);
             };
             console.log("[+] DeviceClient capture installed");
@@ -137,33 +136,177 @@ if (Java.available) {
             console.log("[+] IoT Hub Message capture installed");
         } catch(e) {}
 
-        // Paho MQTT Client capture
+        // Paho MQTT Async Client capture
         try {
             var MqttAsyncClient = Java.use("org.eclipse.paho.client.mqttv3.MqttAsyncClient");
 
             MqttAsyncClient.connect.overload('org.eclipse.paho.client.mqttv3.MqttConnectOptions').implementation = function(options) {
                 console.log("\n" + "*".repeat(70));
-                console.log("[MQTT] Connecting to: " + this.getServerURI());
-                console.log("[MQTT] Client ID: " + this.getClientId());
+                console.log("[MQTT CONNECT] Server: " + this.getServerURI());
+                console.log("[MQTT CONNECT] Client ID: " + this.getClientId());
                 if (options) {
                     try {
-                        console.log("[MQTT] Username: " + options.getUserName());
+                        console.log("[MQTT CONNECT] Username: " + options.getUserName());
+                        var password = options.getPassword();
+                        if (password) {
+                            console.log("[MQTT CONNECT] Password: " + Java.use("java.lang.String").$new(password));
+                        }
+                        console.log("[MQTT CONNECT] Clean Session: " + options.isCleanSession());
+                        console.log("[MQTT CONNECT] Keep Alive: " + options.getKeepAliveInterval());
                     } catch(e) {}
                 }
                 console.log("*".repeat(70) + "\n");
                 return this.connect(options);
             };
 
+            // Capture all publish overloads
             MqttAsyncClient.publish.overload('java.lang.String', 'org.eclipse.paho.client.mqttv3.MqttMessage').implementation = function(topic, message) {
-                console.log("\n[MQTT PUBLISH] Topic: " + topic);
+                console.log("\n" + "-".repeat(70));
+                console.log("[MQTT PUBLISH] Topic: " + topic);
                 try {
                     var payload = message.getPayload();
                     var payloadStr = Java.use("java.lang.String").$new(payload);
+                    console.log("[MQTT PUBLISH] QoS: " + message.getQos());
+                    console.log("[MQTT PUBLISH] Retained: " + message.isRetained());
                     console.log("[MQTT PUBLISH] Payload: " + payloadStr);
-                } catch(e) {}
+                } catch(e) {
+                    console.log("[MQTT PUBLISH] Payload: (binary, " + message.getPayload().length + " bytes)");
+                }
+                console.log("-".repeat(70));
                 return this.publish(topic, message);
             };
-            console.log("[+] Paho MQTT capture installed");
+
+            MqttAsyncClient.publish.overload('java.lang.String', '[B', 'int', 'boolean').implementation = function(topic, payload, qos, retained) {
+                console.log("\n" + "-".repeat(70));
+                console.log("[MQTT PUBLISH] Topic: " + topic);
+                console.log("[MQTT PUBLISH] QoS: " + qos);
+                console.log("[MQTT PUBLISH] Retained: " + retained);
+                try {
+                    var payloadStr = Java.use("java.lang.String").$new(payload);
+                    console.log("[MQTT PUBLISH] Payload: " + payloadStr);
+                } catch(e) {
+                    console.log("[MQTT PUBLISH] Payload: (binary, " + payload.length + " bytes)");
+                }
+                console.log("-".repeat(70));
+                return this.publish(topic, payload, qos, retained);
+            };
+
+            // Capture subscriptions
+            MqttAsyncClient.subscribe.overload('java.lang.String', 'int').implementation = function(topic, qos) {
+                console.log("\n[MQTT SUBSCRIBE] Topic: " + topic + " (QoS: " + qos + ")");
+                return this.subscribe(topic, qos);
+            };
+
+            MqttAsyncClient.subscribe.overload('[Ljava.lang.String;', '[I').implementation = function(topics, qos) {
+                console.log("\n[MQTT SUBSCRIBE] Multiple topics:");
+                for (var i = 0; i < topics.length; i++) {
+                    console.log("  - " + topics[i] + " (QoS: " + qos[i] + ")");
+                }
+                return this.subscribe(topics, qos);
+            };
+
+            console.log("[+] Paho MQTT AsyncClient capture installed");
+        } catch(e) {
+            console.log("[-] Paho MQTT AsyncClient capture failed: " + e);
+        }
+
+        // Paho MQTT Sync Client capture
+        try {
+            var MqttClient = Java.use("org.eclipse.paho.client.mqttv3.MqttClient");
+
+            MqttClient.connect.overload('org.eclipse.paho.client.mqttv3.MqttConnectOptions').implementation = function(options) {
+                console.log("\n" + "*".repeat(70));
+                console.log("[MQTT SYNC CONNECT] Server: " + this.getServerURI());
+                console.log("[MQTT SYNC CONNECT] Client ID: " + this.getClientId());
+                if (options) {
+                    try {
+                        console.log("[MQTT SYNC CONNECT] Username: " + options.getUserName());
+                        var password = options.getPassword();
+                        if (password) {
+                            console.log("[MQTT SYNC CONNECT] Password: " + Java.use("java.lang.String").$new(password));
+                        }
+                    } catch(e) {}
+                }
+                console.log("*".repeat(70) + "\n");
+                return this.connect(options);
+            };
+
+            MqttClient.publish.overload('java.lang.String', 'org.eclipse.paho.client.mqttv3.MqttMessage').implementation = function(topic, message) {
+                console.log("\n" + "-".repeat(70));
+                console.log("[MQTT SYNC PUBLISH] Topic: " + topic);
+                try {
+                    var payload = message.getPayload();
+                    var payloadStr = Java.use("java.lang.String").$new(payload);
+                    console.log("[MQTT SYNC PUBLISH] Payload: " + payloadStr);
+                } catch(e) {}
+                console.log("-".repeat(70));
+                return this.publish(topic, message);
+            };
+
+            MqttClient.subscribe.overload('java.lang.String').implementation = function(topic) {
+                console.log("\n[MQTT SYNC SUBSCRIBE] Topic: " + topic);
+                return this.subscribe(topic);
+            };
+
+            console.log("[+] Paho MQTT SyncClient capture installed");
+        } catch(e) {}
+
+        // MQTT Callback - capture received messages
+        try {
+            var MqttCallback = Java.use("org.eclipse.paho.client.mqttv3.MqttCallback");
+            var MqttCallbackExtended = Java.use("org.eclipse.paho.client.mqttv3.MqttCallbackExtended");
+
+            // Hook all implementations of messageArrived
+            Java.enumerateLoadedClasses({
+                onMatch: function(className) {
+                    try {
+                        var clazz = Java.use(className);
+                        if (clazz.messageArrived) {
+                            clazz.messageArrived.implementation = function(topic, message) {
+                                console.log("\n" + "+".repeat(70));
+                                console.log("[MQTT RECEIVED] Topic: " + topic);
+                                try {
+                                    var payload = message.getPayload();
+                                    var payloadStr = Java.use("java.lang.String").$new(payload);
+                                    console.log("[MQTT RECEIVED] QoS: " + message.getQos());
+                                    console.log("[MQTT RECEIVED] Payload: " + payloadStr);
+                                } catch(e) {
+                                    console.log("[MQTT RECEIVED] Payload: (binary)");
+                                }
+                                console.log("+".repeat(70));
+                                return this.messageArrived(topic, message);
+                            };
+                        }
+                    } catch(e) {}
+                },
+                onComplete: function() {}
+            });
+            console.log("[+] MQTT Callback capture installed");
+        } catch(e) {}
+
+        // Azure IoT MQTT - capture device twin and direct methods
+        try {
+            var DeviceTwin = Java.use("com.microsoft.azure.sdk.iot.device.DeviceTwin.DeviceTwin");
+            if (DeviceTwin) {
+                console.log("[+] Azure IoT DeviceTwin class found");
+            }
+        } catch(e) {}
+
+        // Capture raw MQTT wire protocol if available
+        try {
+            var MqttWireMessage = Java.use("org.eclipse.paho.client.mqttv3.internal.wire.MqttWireMessage");
+            MqttWireMessage.getPayload.implementation = function() {
+                var payload = this.getPayload();
+                var msgType = this.getType();
+                if (payload && payload.length > 0) {
+                    try {
+                        var payloadStr = Java.use("java.lang.String").$new(payload);
+                        console.log("\n[MQTT WIRE] Type: " + msgType + " Payload: " + payloadStr);
+                    } catch(e) {}
+                }
+                return payload;
+            };
+            console.log("[+] MQTT WireMessage capture installed");
         } catch(e) {}
 
         // =====================================================================
@@ -298,12 +441,16 @@ if (Java.available) {
         console.log("=".repeat(70));
         console.log("[*] Now sign in and control the shower");
         console.log("[*] Watch for:");
-        console.log("    [HTTP]        - REST API requests");
-        console.log("    [IOT HUB]     - IoT Hub connection strings");
-        console.log("    [IOT MESSAGE] - Messages to IoT Hub");
-        console.log("    [MQTT]        - MQTT connections and publishes");
-        console.log("    [GSON]        - Command objects being serialized");
-        console.log("    [RETROFIT]    - Request bodies");
+        console.log("    [HTTP]         - REST API requests");
+        console.log("    [IOT HUB]      - IoT Hub connection strings");
+        console.log("    [IOT MESSAGE]  - Messages to IoT Hub");
+        console.log("    [MQTT CONNECT] - MQTT broker connections (server, user, pass)");
+        console.log("    [MQTT PUBLISH] - Outgoing MQTT messages");
+        console.log("    [MQTT SUBSCRIBE] - Topic subscriptions");
+        console.log("    [MQTT RECEIVED] - Incoming MQTT messages");
+        console.log("    [MQTT WIRE]    - Raw MQTT wire protocol");
+        console.log("    [GSON]         - Command objects being serialized");
+        console.log("    [RETROFIT]     - Request bodies");
         console.log("=".repeat(70) + "\n");
     });
 }

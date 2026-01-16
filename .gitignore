@@ -1,81 +1,59 @@
-# Byte-compiled / optimized / DLL files
+.DS_Store
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+.cache
+.claude/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
+.dmypy.json
+.eggs/
+.env
 .hypothesis/
+.idea/
+.installed.cfg
+.mypy_cache/
+.nox/
 .pytest_cache/
-
-# Translations
+.Python
+.ruff_cache/
+.tox/
+.venv
+.vscode/
+*.cover
+*.egg
+*.egg-info/
+*.manifest
 *.mo
 *.pot
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.claude/
-.idea/
-.vscode/
-*.swp
+*.py,cover
+*.py[cod]
+*.spec
 *.swo
+*.swp
 *~
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# ruff
-.ruff_cache/
-
-# Credential extraction outputs
+*$py.class
+build/
+coverage.xml
 credential-extraction/.build/
 credential-extraction/kohler-credentials.yaml
-
-# Dev (reverse engineering)
 dev/apk/
 dev/output/
+develop-eggs/
+dist/
+dmypy.json
+downloads/
+eggs/
+env.bak/
+env/
+ENV/
+htmlcov/
+lib/
+lib64/
+nosetests.xml
+parts/
+pip-delete-this-directory.txt
+pip-log.txt
+sdist/
+var/
+venv.bak/
+venv/
+wheels/

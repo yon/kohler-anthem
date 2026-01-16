@@ -202,7 +202,7 @@ Use this table to build valve control hex values:
 | 95°F (35°C) | `5e` | 25% | `32` | Off | `00` |
 | 100°F (37.7°C) | `79` | 50% | `64` | On | `01` |
 | 104°F (40°C) | `8c` | 75% | `96` | Tub | `02` |
-| 106°F (41.1°C) | `9b` | 100% | `c8` | Stop | `40` |
+| 106°F (41.1°C) | `9b` | 100% | `c8` | Preset | `40` |
 | 110°F (43.3°C) | `ad` | | | | |
 | 120°F (48.8°C) | `e8` | | | | |
 
@@ -212,6 +212,7 @@ Examples:
 - Primary valve, 100°F, 100% flow, ON: `0179c801`
 - Secondary valve, 106°F, 50% flow, ON: `119b6401`
 - Primary valve, any temp, any flow, OFF: `0179c800`
+- Primary valve, 100°F, 100% flow, PRESET: `0179c840`
 
 ---
 
@@ -759,16 +760,18 @@ flow_percent = byte_value / 2
 
 | Hex | Binary | Description |
 |-----|--------|-------------|
-| `00` | 00000000 | Off |
-| `01` | 00000001 | Shower mode, on |
+| `00` | 00000000 | Off (valve closed) |
+| `01` | 00000001 | On - direct control (shower mode) |
 | `02` | 00000010 | Bathtub filler mode |
 | `03` | 00000011 | Bathtub handheld mode |
-| `40` | 01000000 | Stop/standby |
+| `40` | 01000000 | Preset mode (valve active, controlled by preset/experience) |
 
 **Bit interpretation:**
-- Bit 0 (0x01): Outlet active
+- Bit 0 (0x01): Outlet active (direct control)
 - Bit 1 (0x02): Bathtub mode (vs shower mode)
-- Bit 6 (0x40): Stop command
+- Bit 6 (0x40): Preset/experience control mode
+
+**Note:** When activating a preset or experience, the app sends valve commands with mode `0x40` instead of `0x01`. This signals to the controller that these valve settings are part of a preset sequence rather than direct user control. The water still flows - it's not a "stop" command.
 
 ---
 

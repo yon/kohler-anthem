@@ -14,7 +14,8 @@ from pathlib import Path
 # Paths relative to this script (in dev/scripts/)
 SCRIPT_DIR = Path(__file__).parent
 DEV_DIR = SCRIPT_DIR.parent
-BYPASS_SCRIPT = SCRIPT_DIR / "frida_bypass.js"
+PROJECT_DIR = DEV_DIR.parent
+BYPASS_SCRIPT = PROJECT_DIR / "credential-extraction" / "scripts" / "frida_bypass.js"
 CAPTURE_SCRIPT = SCRIPT_DIR / "frida_capture_hooks.js"
 OUTPUT_DIR = DEV_DIR / "output"
 
