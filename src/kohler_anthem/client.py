@@ -114,6 +114,8 @@ class KohlerAnthemClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Ocp-Apim-Subscription-Key": self._config.apim_subscription_key,
+            "User-Agent": "Kohler-Konnect/3.0.0 (Android 14; HomeAssistant)",
+            "Accept": "application/json",
         }
 
         url = f"{self._api_base}{endpoint}"
@@ -126,8 +128,8 @@ class KohlerAnthemClient:
             async with self._session.request(
                 method, url, headers=headers, params=params, json=json
             ) as response:
-                _LOGGER.debug("API Response: status=%s", response.status)
                 data: dict[str, Any] = await response.json()
+                _LOGGER.debug("API Response: status=%s data=%s", response.status, data)
 
                 if response.status == 404:
                     raise DeviceNotFoundError(
@@ -217,44 +219,121 @@ class KohlerAnthemClient:
         device_id: str,
         preset_id: int,
         *,
+        valve_details: list[Any] | None = None,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
-        """Start a preset.
+        """Start a preset or experience.
+
+        This sends two requests:
+        1. controlpresetorexperience - to set the active preset ID
+        2. solowritesystem - to activate valves with mode 0x40 (preset mode)
 
         Args:
             tenant_id: Tenant/customer ID
             device_id: Device ID
-            preset_id: Preset ID
+            preset_id: Preset/experience ID (1-5 for presets, 17+ for experiences)
+            valve_details: List of ValveDetail objects from preset (optional)
             sku: Device SKU
 
         Returns:
-            Command response
+            Command response from valve control
         """
-        endpoint = ENDPOINTS["preset_control"]
-        payload = {
-            "tenantId": tenant_id,
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+
+        # Step 1: Send controlpresetorexperience
+        preset_endpoint = ENDPOINTS["preset_control"]
+        preset_payload = {
             "deviceId": device_id,
-            "presetId": str(preset_id),
-            "command": "start",
             "sku": sku,
+            "tenantId": tenant_id,
+            "presetOrExperienceId": str(preset_id),
         }
-        data = await self._request("POST", endpoint, json=payload)
-        return CommandResponse.from_response(data)
+        _LOGGER.debug("Sending preset control: %s", preset_payload)
+        await self._request("POST", preset_endpoint, json=preset_payload)
+
+        # Step 2: Build valve control model from valve_details
+        if valve_details:
+            valve_control = self._build_valve_control_for_preset(valve_details)
+            _LOGGER.debug("Sending valve control: %s", valve_control.model_dump(by_alias=True))
+            return await self.control_valve(tenant_id, device_id, valve_control, sku=sku)
+
+        # If no valve_details, just return the preset response
+        return CommandResponse(correlation_id="", timestamp=0)
+
+    def _build_valve_control_for_preset(
+        self,
+        valve_details: list[Any],
+    ) -> ValveControlModel:
+        """Build ValveControlModel from preset valve details.
+
+        Converts preset valve hex_strings to valve control commands with mode 0x40.
+
+        Args:
+            valve_details: List of ValveDetail objects from preset
+
+        Returns:
+            ValveControlModel with valve commands
+        """
+        valve_map = {
+            "Valve1": "primary_valve1",
+            "Valve2": "secondary_valve1",
+            "Valve3": "secondary_valve2",
+            "Valve4": "secondary_valve3",
+            "Valve5": "secondary_valve4",
+            "Valve6": "secondary_valve5",
+            "Valve7": "secondary_valve6",
+            "Valve8": "secondary_valve7",
+        }
+        prefix_map = {
+            "Valve1": "01",
+            "Valve2": "11",
+            "Valve3": "21",
+            "Valve4": "31",
+            "Valve5": "41",
+            "Valve6": "51",
+            "Valve7": "61",
+            "Valve8": "71",
+        }
+
+        kwargs = {}
+        for valve in valve_details:
+            if hasattr(valve, "valve_index"):
+                valve_index = valve.valve_index
+            else:
+                valve_index = valve.get("valveIndex", "")
+            if hasattr(valve, "hex_string"):
+                hex_string = valve.hex_string
+            else:
+                hex_string = valve.get("hexString")
+
+            if not hex_string or valve_index not in valve_map:
+                continue
+
+            # hex_string format: [outlet_mask 2][temp 2][flow 2] = 6 chars
+            # We need: [valve_prefix 2][temp 2][flow 2][mode 2] = 8 chars
+            if len(hex_string) >= 6:
+                temp_flow = hex_string[2:6]  # Extract temp and flow (chars 2-5)
+                prefix = prefix_map.get(valve_index, "01")
+                mode = "40"  # Preset mode
+                valve_cmd = f"{prefix}{temp_flow}{mode}"
+                field_name = valve_map[valve_index]
+                kwargs[field_name] = valve_cmd
+
+        return ValveControlModel(**kwargs)
 
     async def stop_preset(
         self,
         tenant_id: str,
         device_id: str,
-        preset_id: int,
         *,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
-        """Stop a running preset.
+        """Stop a running preset or experience.
 
         Args:
             tenant_id: Tenant/customer ID
             device_id: Device ID
-            preset_id: Preset ID that is currently running
             sku: Device SKU
 
         Returns:
@@ -264,8 +343,7 @@ class KohlerAnthemClient:
         payload = {
             "tenantId": tenant_id,
             "deviceId": device_id,
-            "presetId": str(preset_id),
-            "command": "stop",
+            "presetOrExperienceId": "0",
             "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
@@ -280,7 +358,6 @@ class KohlerAnthemClient:
         tenant_id: str,
         device_id: str,
         *,
-        preset_id: int = 1,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
         """Start warmup mode.
@@ -288,7 +365,6 @@ class KohlerAnthemClient:
         Args:
             tenant_id: Tenant/customer ID
             device_id: Device ID
-            preset_id: Preset to warm up for
             sku: Device SKU
 
         Returns:
@@ -298,8 +374,6 @@ class KohlerAnthemClient:
         payload = {
             "tenantId": tenant_id,
             "deviceId": device_id,
-            "presetId": str(preset_id),
-            "command": "start",
             "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
@@ -310,7 +384,6 @@ class KohlerAnthemClient:
         tenant_id: str,
         device_id: str,
         *,
-        preset_id: int = 1,
         sku: str = DEFAULT_SKU,
     ) -> CommandResponse:
         """Stop warmup mode.
@@ -318,18 +391,17 @@ class KohlerAnthemClient:
         Args:
             tenant_id: Tenant/customer ID
             device_id: Device ID
-            preset_id: Preset being warmed up
             sku: Device SKU
 
         Returns:
             Command response
         """
-        endpoint = ENDPOINTS["warmup"]
+        # Warmup is stopped by sending presetOrExperienceId: "0" to preset control
+        endpoint = ENDPOINTS["preset_control"]
         payload = {
             "tenantId": tenant_id,
             "deviceId": device_id,
-            "presetId": str(preset_id),
-            "command": "stop",
+            "presetOrExperienceId": "0",
             "sku": sku,
         }
         data = await self._request("POST", endpoint, json=payload)
@@ -360,10 +432,10 @@ class KohlerAnthemClient:
         """
         endpoint = ENDPOINTS["valve_control"]
         payload = {
-            "tenantId": tenant_id,
-            "deviceId": device_id,
             "gcsValveControlModel": valve_control.model_dump(by_alias=True),
+            "deviceId": device_id,
             "sku": sku,
+            "tenantId": tenant_id,
         }
         data = await self._request("POST", endpoint, json=payload)
         return CommandResponse.from_response(data)

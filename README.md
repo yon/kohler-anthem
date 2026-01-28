@@ -53,7 +53,7 @@ asyncio.run(main())
 
 ### Obtaining Credentials
 
-The `client_id`, `api_resource`, and `apim_subscription_key` must be extracted from the Kohler Konnect mobile app. See [credential-extraction/](credential-extraction/) for automated tools and instructions.
+The `client_id`, `api_resource`, and `apim_subscription_key` must be extracted from the Kohler Konnect mobile app. See [credential-extraction](https://github.com/yon/kohler-anthem/tree/main/credential-extraction) for automated tools and instructions.
 
 
 ## Development

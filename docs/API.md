@@ -125,6 +125,8 @@ curl -X POST "$BASE_URL/platform/api/v1/commands/gcs/solowritesystem" \
 
 ### 5. Start a Preset
 
+> **WARNING**: Preset/experience commands are not currently working. The API returns 201 success but the device does not respond. The mobile app sends both `controlpresetorexperience` AND `solowritesystem` with mode 0x40, but even replicating this exact behavior doesn't work from third-party clients. Investigation ongoing.
+
 ```bash
 # Start preset #3
 curl -X POST "$BASE_URL/platform/api/v1/commands/gcs/controlpresetorexperience" \

@@ -255,6 +255,7 @@ class TestKohlerAnthemClient:
                 await client.get_customer("customer-123")
 
                 response = await client.turn_on_outlet(
+                    "tenant-456",
                     "gcs-device-1",
                     Outlet.SHOWERHEAD,
                     temperature_celsius=38.0,
@@ -285,7 +286,7 @@ class TestKohlerAnthemClient:
 
             async with KohlerAnthemClient(config) as client:
                 await client.get_customer("customer-123")
-                response = await client.turn_off("gcs-device-1")
+                response = await client.turn_off("tenant-456", "gcs-device-1")
 
                 assert response.correlation_id == "cmd-123"
 
@@ -297,15 +298,24 @@ class TestKohlerAnthemClient:
         mock_command_response: dict,
     ) -> None:
         """Test start_preset."""
+        valve_details = [
+            {"valveIndex": "Valve1", "hexString": "013864"},
+        ]
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
             m.post(
                 f"{API_BASE}/platform/api/v1/commands/gcs/controlpresetorexperience",
                 payload=mock_command_response,
             )
+            m.post(
+                f"{API_BASE}/platform/api/v1/commands/gcs/solowritesystem",
+                payload=mock_command_response,
+            )
 
             async with KohlerAnthemClient(config) as client:
-                response = await client.start_preset("gcs-device-1", preset_id=1)
+                response = await client.start_preset(
+                    "tenant-456", "gcs-device-1", preset_id=1, valve_details=valve_details
+                )
 
                 assert response.correlation_id == "cmd-123"
 
@@ -325,7 +335,7 @@ class TestKohlerAnthemClient:
             )
 
             async with KohlerAnthemClient(config) as client:
-                response = await client.start_warmup("gcs-device-1")
+                response = await client.start_warmup("tenant-456", "gcs-device-1")
 
                 assert response.correlation_id == "cmd-123"
 
