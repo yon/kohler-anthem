@@ -106,6 +106,14 @@ class WarmUpState(KohlerBaseModel):
     warm_up: str = Field(default="warmUpDisabled", alias="warmUp")
     state: WarmUpStatus = Field(default=WarmUpStatus.NOT_IN_PROGRESS)
 
+    @field_validator("warm_up", mode="before")
+    @classmethod
+    def parse_warm_up(cls, v: Any) -> str:
+        """Parse warm_up, handling None from API."""
+        if v is None:
+            return "warmUpDisabled"
+        return str(v)
+
     @field_validator("state", mode="before")
     @classmethod
     def parse_state(cls, v: Any) -> WarmUpStatus:

@@ -14,6 +14,7 @@ from kohler_anthem.models import (
     ValveControlModel,
     ValveSettings,
     ValveState,
+    WarmUpState,
     WarmUpStatus,
 )
 
@@ -105,6 +106,28 @@ class TestValveState:
         assert valve.is_active is False
 
 
+class TestWarmUpState:
+    """Document WarmUpState parsing from API responses."""
+
+    def test_warm_up_none_from_api(self):
+        """API sometimes returns null for warmUp field."""
+        data = {"warmUp": None, "state": "warmUpNotInProgress"}
+        state = WarmUpState.model_validate(data)
+        assert state.warm_up == "warmUpDisabled"
+
+    def test_warm_up_normal_string(self):
+        """Normal string values pass through."""
+        data = {"warmUp": "warmUpEnabled", "state": "warmUpNotInProgress"}
+        state = WarmUpState.model_validate(data)
+        assert state.warm_up == "warmUpEnabled"
+
+    def test_warm_up_default(self):
+        """Default value when field is missing."""
+        state = WarmUpState()
+        assert state.warm_up == "warmUpDisabled"
+        assert state.state == WarmUpStatus.NOT_IN_PROGRESS
+
+
 class TestDeviceStateData:
     """Document DeviceStateData (inner state object) parsing."""
 
@@ -185,6 +208,28 @@ class TestDeviceState:
         device = DeviceState.model_validate(data)
         assert device.connection_state == ConnectionState.DISCONNECTED
         assert device.is_connected is False
+
+    def test_null_warm_up_in_device_state(self):
+        """API returns null for warmUp in nested state - should not raise."""
+        data = {
+            "id": "device123",
+            "deviceId": "device123",
+            "connectionState": "Connected",
+            "state": {
+                "currentSystemState": "normalOperation",
+                "warmUpState": {"warmUp": None, "state": "warmUpNotInProgress"},
+                "presetOrExperienceId": "0",
+                "totalVolume": "0",
+                "totalFlow": "0",
+                "ready": "true",
+                "valveState": [],
+                "ioTActive": "Inactive",
+            },
+            "setting": {"valveSettings": [], "flowControl": "Disabled"},
+        }
+        device = DeviceState.model_validate(data)
+        assert device.state.warm_up_state.warm_up == "warmUpDisabled"
+        assert device.is_warming_up is False
 
 
 class TestValveSettings:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kohler-anthem"
-version = "0.1.3"
+version = "0.1.4"
 description = "Python client library for Kohler Anthem Digital Shower API"
 readme = "README.md"
 license = "MIT"
