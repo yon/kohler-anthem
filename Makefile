@@ -1,15 +1,28 @@
 -include .env
 export
 
+VENV := .venv
+PYTHON := $(VENV)/bin/python3
+
 .PHONY: build check clean deps format help lint publish test typecheck
 .DEFAULT_GOAL := help
+
+# =============================================================================
+# Environment
+# =============================================================================
+
+$(VENV):
+	python3 -m venv $(VENV)
+
+deps: $(VENV) ## Install Python dev dependencies
+	@$(PYTHON) -m pip install -e ".[dev]"
 
 # =============================================================================
 # Development
 # =============================================================================
 
-build: ## Build the package
-	python3 -m build
+build: deps ## Build the package
+	$(PYTHON) -m build
 
 check: lint typecheck test ## Run all checks
 
@@ -17,11 +30,8 @@ clean: ## Remove build artifacts and caches
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-deps: ## Install Python dev dependencies
-	@python3 -m pip install -e ".[dev]"
-
-format: ## Format code with ruff
-	python3 -m ruff format .
+format: deps ## Format code with ruff
+	$(PYTHON) -m ruff format .
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -30,14 +40,14 @@ help: ## Show this help message
 	@echo ""
 	@echo "For credential extraction, see: credential-extraction/"
 
-lint: ## Run ruff linter
-	python3 -m ruff check .
+lint: deps ## Run ruff linter
+	$(PYTHON) -m ruff check .
 
 publish: clean build ## Publish to PyPI
-	python3 -m twine upload dist/*
+	$(PYTHON) -m twine upload dist/*
 
-test: ## Run tests
-	python3 -m pytest
+test: deps ## Run tests
+	$(PYTHON) -m pytest
 
-typecheck: ## Run mypy type checking
-	python3 -m mypy src
+typecheck: deps ## Run mypy type checking
+	$(PYTHON) -m mypy src
