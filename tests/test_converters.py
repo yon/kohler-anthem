@@ -1,6 +1,5 @@
 """Tests for unit converters."""
 
-
 from kohler_anthem import (
     celsius_to_fahrenheit,
     fahrenheit_to_celsius,

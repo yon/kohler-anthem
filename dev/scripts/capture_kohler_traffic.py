@@ -191,7 +191,7 @@ def response(flow: http.HTTPFlow) -> None:
     captured_data["requests"].append(request_info)
 
     # Log important requests
-    status = flow.response.status_code if flow.response else 'N/A'
+    status = flow.response.status_code if flow.response else "N/A"
     ctx.log.info(f"Captured: {flow.request.method} {flow.request.url[:80]} -> {status}")
 
     # Save to file incrementally
@@ -233,9 +233,9 @@ def done():
     """Called when mitmproxy is shutting down."""
     save_captured_data()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("CAPTURE COMPLETE - SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"\nAPIM Subscription Keys Found: {len(captured_data['apim_subscription_keys'])}")
     for key in captured_data["apim_subscription_keys"]:
         print(f"  - {key}")
@@ -254,4 +254,4 @@ def done():
 
     print(f"\nTotal Requests Captured: {len(captured_data['requests'])}")
     print(f"\nOutput saved to: {OUTPUT_DIR}/")
-    print("="*60)
+    print("=" * 60)

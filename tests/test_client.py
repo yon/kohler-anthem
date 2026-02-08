@@ -135,9 +135,7 @@ class TestKohlerAnthemClient:
     """Test KohlerAnthemClient class."""
 
     @pytest.mark.asyncio
-    async def test_connect_and_close(
-        self, config: KohlerConfig, mock_token_response: dict
-    ) -> None:
+    async def test_connect_and_close(self, config: KohlerConfig, mock_token_response: dict) -> None:
         """Test client connect and close."""
         client = KohlerAnthemClient(config)
 
@@ -152,9 +150,7 @@ class TestKohlerAnthemClient:
             assert client._session is None
 
     @pytest.mark.asyncio
-    async def test_context_manager(
-        self, config: KohlerConfig, mock_token_response: dict
-    ) -> None:
+    async def test_context_manager(self, config: KohlerConfig, mock_token_response: dict) -> None:
         """Test async context manager."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
@@ -340,9 +336,7 @@ class TestKohlerAnthemClient:
                 assert response.correlation_id == "cmd-123"
 
     @pytest.mark.asyncio
-    async def test_api_error_404(
-        self, config: KohlerConfig, mock_token_response: dict
-    ) -> None:
+    async def test_api_error_404(self, config: KohlerConfig, mock_token_response: dict) -> None:
         """Test 404 raises DeviceNotFoundError."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
@@ -359,9 +353,7 @@ class TestKohlerAnthemClient:
                 assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_api_error_500(
-        self, config: KohlerConfig, mock_token_response: dict
-    ) -> None:
+    async def test_api_error_500(self, config: KohlerConfig, mock_token_response: dict) -> None:
         """Test 500 raises ApiError."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)

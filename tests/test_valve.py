@@ -210,29 +210,41 @@ class TestValveMode:
 class TestCapturedCommands:
     """Test encoding/decoding of actual captured commands from traffic analysis."""
 
-    @pytest.mark.parametrize("hex_cmd,expected", [
-        # From captured traffic: 100°F, 100% flow, shower ON
-        ("0179C801", {
-            "prefix": ValvePrefix.PRIMARY,
-            "temperature_celsius": 37.7,  # 100°F
-            "flow_percent": 100,
-            "mode": ValveMode.SHOWER,
-        }),
-        # 100°F, 50% flow, shower ON
-        ("01796401", {
-            "prefix": ValvePrefix.PRIMARY,
-            "temperature_celsius": 37.7,
-            "flow_percent": 50,
-            "mode": ValveMode.SHOWER,
-        }),
-        # 100°F, 100% flow, STOP (pause)
-        ("0179C840", {
-            "prefix": ValvePrefix.PRIMARY,
-            "temperature_celsius": 37.7,
-            "flow_percent": 100,
-            "mode": ValveMode.STOP,
-        }),
-    ])
+    @pytest.mark.parametrize(
+        "hex_cmd,expected",
+        [
+            # From captured traffic: 100°F, 100% flow, shower ON
+            (
+                "0179C801",
+                {
+                    "prefix": ValvePrefix.PRIMARY,
+                    "temperature_celsius": 37.7,  # 100°F
+                    "flow_percent": 100,
+                    "mode": ValveMode.SHOWER,
+                },
+            ),
+            # 100°F, 50% flow, shower ON
+            (
+                "01796401",
+                {
+                    "prefix": ValvePrefix.PRIMARY,
+                    "temperature_celsius": 37.7,
+                    "flow_percent": 50,
+                    "mode": ValveMode.SHOWER,
+                },
+            ),
+            # 100°F, 100% flow, STOP (pause)
+            (
+                "0179C840",
+                {
+                    "prefix": ValvePrefix.PRIMARY,
+                    "temperature_celsius": 37.7,
+                    "flow_percent": 100,
+                    "mode": ValveMode.STOP,
+                },
+            ),
+        ],
+    )
     def test_decode_captured_commands(self, hex_cmd, expected):
         """Verify captured commands decode to expected values."""
         result = decode_valve_command(hex_cmd)
@@ -288,12 +300,15 @@ class TestHelperFunctions:
 class TestRoundTrip:
     """Test that encoding and decoding are inverse operations."""
 
-    @pytest.mark.parametrize("temp_c,flow_pct,mode,prefix", [
-        (38.0, 50, ValveMode.SHOWER, ValvePrefix.PRIMARY),
-        (37.7, 100, ValveMode.TUB_FILLER, ValvePrefix.PRIMARY),
-        (45.0, 75, ValveMode.STOP, ValvePrefix.SECONDARY_1),
-        (30.0, 25, ValveMode.SHOWER, ValvePrefix.PRIMARY),  # Min ~25.6°C
-    ])
+    @pytest.mark.parametrize(
+        "temp_c,flow_pct,mode,prefix",
+        [
+            (38.0, 50, ValveMode.SHOWER, ValvePrefix.PRIMARY),
+            (37.7, 100, ValveMode.TUB_FILLER, ValvePrefix.PRIMARY),
+            (45.0, 75, ValveMode.STOP, ValvePrefix.SECONDARY_1),
+            (30.0, 25, ValveMode.SHOWER, ValvePrefix.PRIMARY),  # Min ~25.6°C
+        ],
+    )
     def test_encode_decode_roundtrip(self, temp_c, flow_pct, mode, prefix):
         """Encoding then decoding should return original values."""
         encoded = encode_valve_command(

@@ -5,7 +5,6 @@ These tests document the MQTT protocol discovered through traffic analysis.
 """
 
 
-
 class TestIoTHubConnection:
     """Document Azure IoT Hub connection parameters."""
 
@@ -17,6 +16,7 @@ class TestIoTHubConnection:
     def test_mqtt_protocol(self):
         """Uses MQTT v3.1.1 protocol."""
         import paho.mqtt.client as mqtt
+
         assert mqtt.MQTTv311 == 4
 
     def test_iot_hub_hostname(self):
@@ -153,6 +153,7 @@ class TestMqttClientConfiguration:
         Use ssl.create_default_context() for proper certificate validation.
         """
         import ssl
+
         context = ssl.create_default_context()
         assert context.check_hostname is True
         assert context.verify_mode == ssl.CERT_REQUIRED

@@ -43,20 +43,20 @@ def extract_urls(strings):
 def extract_api_endpoints(strings):
     """Extract API endpoint patterns."""
     endpoints = defaultdict(list)
-    
+
     # Look for endpoint patterns
     patterns = [
         (r"/(api|token|device|customer|anthem|iot)[^\"'\s]*", "endpoint"),
         (r"https://[^\"'\s]+/(api|token|device)[^\"'\s]*", "full_url"),
         (r"@(GET|POST|PUT|DELETE|PATCH)\(" + r'["\']([^"\']+)["\']', "retrofit"),
     ]
-    
+
     for pattern, category in patterns:
         for s in strings:
             matches = re.finditer(pattern, s, re.IGNORECASE)
             for match in matches:
                 endpoints[category].append(match.group(0))
-    
+
     return {k: sorted(set(v)) for k, v in endpoints.items()}
 
 
@@ -78,7 +78,7 @@ def extract_models(strings):
         (r"(\w+Request)", "request"),
         (r"(\w+DTO)", "dto"),
     ]
-    
+
     for pattern, category in patterns:
         for s in strings:
             matches = re.finditer(pattern, s)
@@ -86,7 +86,7 @@ def extract_models(strings):
                 name = match.group(1).lower()
                 if "anthem" in name or "device" in name or "iot" in name:
                     models[category].append(match.group(1))
-    
+
     return {k: sorted(set(v)) for k, v in models.items()}
 
 
@@ -99,13 +99,13 @@ def extract_control_commands(strings):
         r"(start|stop|set|get|update|control).*temperature",
         r"(start|stop|set|get|update|control).*outlet",
     ]
-    
+
     for pattern in patterns:
         for s in strings:
             matches = re.finditer(pattern, s, re.IGNORECASE)
             for match in matches:
                 commands.append(match.group(0))
-    
+
     return sorted(set(commands))
 
 
@@ -119,7 +119,7 @@ def extract_json_configs():
         "res/raw/auth_config_release.json",
         "assets/deviceconfig.properties",
     ]
-    
+
     for json_file in json_files:
         file_path = APK_DIR / json_file
         if file_path.exists():
@@ -132,7 +132,7 @@ def extract_json_configs():
                         configs[json_file] = f.read()
             except Exception as e:
                 print(f"Error reading {json_file}: {e}", file=sys.stderr)
-    
+
     return configs
 
 
@@ -142,12 +142,12 @@ def main():
     print("Comprehensive Kohler Anthem APK Analysis")
     print("=" * 80)
     print()
-    
+
     print("Extracting strings from DEX files...")
     strings = extract_strings_from_dex()
     print(f"Extracted {len(strings)} strings")
     print()
-    
+
     print("Extracting URLs...")
     urls = extract_urls(strings)
     print(f"Found {len(urls)} URLs")
@@ -156,7 +156,7 @@ def main():
     for url in [u for u in urls if any(x in u.lower() for x in keywords)]:
         print(f"  {url}")
     print()
-    
+
     print("Extracting API endpoints...")
     endpoints = extract_api_endpoints(strings)
     for category, values in endpoints.items():
@@ -164,7 +164,7 @@ def main():
         for v in values[:20]:  # Limit output
             print(f"  {v}")
     print()
-    
+
     print("Extracting Anthem-related classes...")
     classes = extract_class_names(strings)
     print(f"Found {len(classes)} Anthem classes")
@@ -172,7 +172,7 @@ def main():
     for cls in classes[:30]:
         print(f"  {cls}")
     print()
-    
+
     print("Extracting models...")
     models = extract_models(strings)
     for category, values in models.items():
@@ -180,14 +180,14 @@ def main():
         for v in values[:15]:
             print(f"  {v}")
     print()
-    
+
     print("Extracting control commands...")
     commands = extract_control_commands(strings)
     print(f"Found {len(commands)} command patterns")
     for cmd in commands[:20]:
         print(f"  {cmd}")
     print()
-    
+
     print("Extracting JSON configurations...")
     configs = extract_json_configs()
     for filename, content in configs.items():
@@ -197,7 +197,7 @@ def main():
         else:
             print(content[:500])
     print()
-    
+
     # Save detailed results
     results = {
         "urls": urls,
@@ -207,11 +207,11 @@ def main():
         "commands": commands,
         "configs": configs,
     }
-    
+
     output_file = Path(__file__).parent.parent / "apk_analysis_results.json"
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2, default=str)
-    
+
     print(f"\nDetailed results saved to: {output_file}")
     print("=" * 80)
 

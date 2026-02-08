@@ -13,6 +13,7 @@ if len(sys.argv) < 2:
 
 ANTHEM_IP = sys.argv[1]
 
+
 def test(endpoint, params=None):
     url = f"http://{ANTHEM_IP}/{endpoint}"
     try:
@@ -26,6 +27,7 @@ def test(endpoint, params=None):
             pass
     except Exception as e:
         print(f"{endpoint}: ERROR - {e}")
+
 
 print(f"Testing {ANTHEM_IP}...")
 test("system_info.cgi")

@@ -24,17 +24,17 @@ def find_msal_config(decompiled_path: Path) -> dict:
     # Search patterns
     client_id_pattern = re.compile(r'"client_id"\s*:\s*"([a-f0-9-]{36})"', re.IGNORECASE)
     # API resource is often in scope URLs
-    scope_pattern = re.compile(r'https://[^/]+/([a-f0-9-]{36})/', re.IGNORECASE)
+    scope_pattern = re.compile(r"https://[^/]+/([a-f0-9-]{36})/", re.IGNORECASE)
 
     # Walk through all files
     for root, _dirs, files in os.walk(decompiled_path):
         for filename in files:
-            if not filename.endswith(('.java', '.json', '.xml', '.smali')):
+            if not filename.endswith((".java", ".json", ".xml", ".smali")):
                 continue
 
             filepath = Path(root) / filename
             try:
-                content = filepath.read_text(encoding='utf-8', errors='ignore')
+                content = filepath.read_text(encoding="utf-8", errors="ignore")
 
                 # Look for client_id
                 if not results["client_id"]:
@@ -83,7 +83,7 @@ def find_in_resources(decompiled_path: Path) -> dict:
                 # Check for scopes
                 if "scopes" in config:
                     for scope in config.get("scopes", []):
-                        match = re.search(r'/([a-f0-9-]{36})/', scope)
+                        match = re.search(r"/([a-f0-9-]{36})/", scope)
                         if match and match.group(1) != results.get("client_id"):
                             results["api_resource"] = match.group(1)
                             break

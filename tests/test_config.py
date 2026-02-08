@@ -91,7 +91,6 @@ class TestKohlerConfig:
             api_resource="my-api-resource",
         )
         expected = (
-            "openid offline_access "
-            "https://konnectkohler.onmicrosoft.com/my-api-resource/apiaccess"
+            "openid offline_access https://konnectkohler.onmicrosoft.com/my-api-resource/apiaccess"
         )
         assert config.auth_scope == expected

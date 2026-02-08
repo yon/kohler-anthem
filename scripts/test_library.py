@@ -68,6 +68,7 @@ async def main() -> None:
 
             # Extract customer_id from JWT token
             import base64
+
             token = client._auth.token
             if token:
                 token_parts = token.access_token.split(".")

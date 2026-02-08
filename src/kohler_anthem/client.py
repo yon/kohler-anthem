@@ -121,6 +121,7 @@ class KohlerAnthemClient:
         url = f"{self._api_base}{endpoint}"
 
         import logging
+
         _LOGGER = logging.getLogger(__name__)
         _LOGGER.debug("API Request: %s %s payload=%s", method, endpoint, json)
 
@@ -239,6 +240,7 @@ class KohlerAnthemClient:
             Command response from valve control
         """
         import logging
+
         _LOGGER = logging.getLogger(__name__)
 
         # Step 1: Send controlpresetorexperience

@@ -136,11 +136,13 @@ class TestKohlerAuth:
         # Mock session
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "access_token": "new-access-token",
-            "refresh_token": "new-refresh-token",
-            "expires_in": 3600,
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "access_token": "new-access-token",
+                "refresh_token": "new-refresh-token",
+                "expires_in": 3600,
+            }
+        )
 
         mock_session = MagicMock()
         mock_session.post = MagicMock(
@@ -159,10 +161,12 @@ class TestKohlerAuth:
 
         mock_response = AsyncMock()
         mock_response.status = 401
-        mock_response.json = AsyncMock(return_value={
-            "error": "invalid_grant",
-            "error_description": "Invalid credentials",
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "error": "invalid_grant",
+                "error_description": "Invalid credentials",
+            }
+        )
 
         mock_session = MagicMock()
         mock_session.post = MagicMock(
@@ -182,11 +186,13 @@ class TestKohlerAuth:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "access_token": "new-token",
-            "refresh_token": "refresh",
-            "expires_in": 3600,
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "access_token": "new-token",
+                "refresh_token": "refresh",
+                "expires_in": 3600,
+            }
+        )
 
         mock_session = MagicMock()
         mock_session.post = MagicMock(

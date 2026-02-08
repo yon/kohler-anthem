@@ -4,7 +4,6 @@ These tests document the Kohler Anthem cloud API structure discovered
 through app traffic analysis.
 """
 
-
 from kohler_anthem.const import (
     API_BASE,
     DEFAULT_SKU,

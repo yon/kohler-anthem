@@ -81,9 +81,12 @@ def main():
     cmd = [
         frida_cmd,
         "-U",  # USB device
-        "-f", APP_PACKAGE,  # Spawn app
-        "-l", str(BYPASS_SCRIPT),
-        "-l", str(CAPTURE_SCRIPT),
+        "-f",
+        APP_PACKAGE,  # Spawn app
+        "-l",
+        str(BYPASS_SCRIPT),
+        "-l",
+        str(CAPTURE_SCRIPT),
     ]
 
     # Run frida and tee output to file

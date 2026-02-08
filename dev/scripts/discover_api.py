@@ -22,7 +22,7 @@ def test_endpoint(
 ) -> None:
     """Test a single endpoint and print results."""
     url = f"{base_url}/{endpoint}"
-    
+
     try:
         if method == "GET":
             resp = requests.get(url, params=params, timeout=5)
@@ -51,18 +51,18 @@ def print_response(
     """Print formatted response information."""
     status_icon = "✅" if resp.status_code == 200 else "⚠️" if resp.status_code < 400 else "❌"
     print(f"  {status_icon} {endpoint} ({method}): {resp.status_code} {resp.reason}")
-    
+
     if params:
         print(f"     Params: {params}")
     if data:
         print(f"     Data: {data}")
-    
+
     try:
         text = resp.text
         content_type = resp.headers.get("Content-Type", "unknown")
         print(f"     Content-Type: {content_type}")
         print(f"     Content-Length: {len(text)} bytes")
-        
+
         # Try to decode as JSON
         try:
             json_data = resp.json()
@@ -87,11 +87,11 @@ def print_response(
 def discover_api(ip_address: str) -> None:
     """Discover API endpoints on the Kohler Anthem device."""
     base_url = f"http://{ip_address}"
-    
-    print(f"\n{'='*60}")
+
+    print(f"\n{'=' * 60}")
     print(f"Discovering Kohler Anthem API at {ip_address}")
-    print(f"{'='*60}\n")
-    
+    print(f"{'=' * 60}\n")
+
     # Common CGI endpoints to test
     cgi_endpoints = [
         "system_info.cgi",
@@ -107,7 +107,7 @@ def discover_api(ip_address: str) -> None:
         "api/control",
         "api/system",
     ]
-    
+
     # Common REST-style endpoints
     rest_endpoints = [
         "api/v1/status",
@@ -118,23 +118,23 @@ def discover_api(ip_address: str) -> None:
         "values",
         "control",
     ]
-    
+
     # Test root endpoint
     print("Testing root endpoint:")
     test_endpoint(base_url, "")
-    
+
     # Test CGI endpoints
     print("\nTesting CGI endpoints (GET):")
     for endpoint in cgi_endpoints:
         test_endpoint(base_url, endpoint)
         time.sleep(0.1)  # Small delay between requests
-    
+
     # Test REST endpoints
     print("\nTesting REST endpoints (GET):")
     for endpoint in rest_endpoints:
         test_endpoint(base_url, endpoint)
         time.sleep(0.1)
-    
+
     # Test POST methods on likely control endpoints
     print("\nTesting POST methods on control endpoints:")
     control_endpoints = ["control.cgi", "api/control", "api/v1/control", "control"]
@@ -148,7 +148,7 @@ def discover_api(ip_address: str) -> None:
         for cmd in test_commands:
             test_endpoint(base_url, endpoint, "POST", data=cmd)
             time.sleep(0.1)
-    
+
     # Test status endpoint with different query params
     print("\nTesting status endpoint with query parameters:")
     status_params = [
@@ -159,10 +159,10 @@ def discover_api(ip_address: str) -> None:
     for params in status_params:
         test_endpoint(base_url, "status.cgi", params=params)
         time.sleep(0.1)
-    
-    print(f"\n{'='*60}")
+
+    print(f"\n{'=' * 60}")
     print("Discovery complete!")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":
@@ -170,6 +170,6 @@ if __name__ == "__main__":
         print("Usage: python3 discover_api.py <IP_ADDRESS>")
         print("Example: python3 discover_api.py 10.10.3.84")
         sys.exit(1)
-    
+
     ip_address = sys.argv[1]
     discover_api(ip_address)

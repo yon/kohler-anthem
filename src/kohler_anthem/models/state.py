@@ -46,8 +46,7 @@ class ValveState(KohlerBaseModel):
     outlets: list[OutletState] = Field(default_factory=list)
 
     @field_validator(
-        "at_flow", "at_temp", "error_flag", "pause_flag", "out1", "out2", "out3",
-        mode="before"
+        "at_flow", "at_temp", "error_flag", "pause_flag", "out1", "out2", "out3", mode="before"
     )
     @classmethod
     def parse_bool(cls, v: Any) -> bool:
@@ -142,9 +141,13 @@ class OutletConfiguration(KohlerBaseModel):
     max_runtime: int = Field(default=1800, alias="maximumRuntime")
 
     @field_validator(
-        "outlet_type", "outlet_id", "max_flowrate", "min_flowrate",
-        "default_flowrate", "max_runtime",
-        mode="before"
+        "outlet_type",
+        "outlet_id",
+        "max_flowrate",
+        "min_flowrate",
+        "default_flowrate",
+        "max_runtime",
+        mode="before",
     )
     @classmethod
     def parse_int(cls, v: Any) -> int:
@@ -156,10 +159,7 @@ class OutletConfiguration(KohlerBaseModel):
                 return 0
         return int(v) if v is not None else 0
 
-    @field_validator(
-        "max_temperature", "min_temperature", "default_temperature",
-        mode="before"
-    )
+    @field_validator("max_temperature", "min_temperature", "default_temperature", mode="before")
     @classmethod
     def parse_float(cls, v: Any) -> float:
         """Parse string floats."""
