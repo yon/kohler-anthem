@@ -120,6 +120,63 @@ The SharedAccessKey changes per session (provisioned dynamically).
 - Status updates via telemetry messages
 - Commands via Direct Methods (`ExecuteControlCommand`)
 
+## Auth Flow: ROPC vs B2C_1A_signin
+
+Kohler's B2C tenant exposes two policies, both visible at:
+`https://konnectkohler.b2clogin.com/konnectkohler.onmicrosoft.com/{policy}/v2.0/.well-known/openid-configuration`
+
+| Policy | Type | What it issues |
+|--------|------|----------------|
+| `B2C_1_ROPC_Auth` | Resource Owner Password Credentials (legacy) | Tokens with `tfp=B2C_1_ROPC_Auth` and `scp=apiaccess`. No `acr`/`amr` auth-context claims. |
+| `B2C_1A_signin` | Custom Identity Experience Framework (interactive) | Tokens with extra auth-context claims. Used by the official iOS/Android apps. |
+
+The library currently uses ROPC because it's the simplest flow to script
+from a captured `client_id` + username/password. **However, as of early
+May 2026, Kohler's backend rejects ROPC-issued tokens on
+`/platform/api/v1/commands/gcs/*` with HTTP 403** while still accepting
+them on read endpoints and on `/platform/api/v1/mobile/settings`.
+
+### How to confirm this is what's happening
+
+Run the health check:
+
+```bash
+make health-check
+```
+
+If reads + `mobile/settings` return `OK` and the three `/commands/gcs/*`
+endpoints return `BACKEND_FORBIDDEN` (HTTP 403), this is exactly the
+ROPC-rejection pattern. The diagnostic prints an interpretation pointing
+at the auth-flow rewrite plan.
+
+### Why the diagnostic distinguishes APIM-403 from backend-403
+
+A 403 from APIM (e.g., subscription key revoked or unauthorized for the
+product) carries APIM's gateway error envelope. A 403 from the backend
+(ASP.NET Web API) carries CSP / x-frame-options / referrer-policy headers
+and `{"detail":null,"error":null,"statusCode":403,"message":"Forbidden"}`.
+That distinction lets us separate "key problem" from "token-type problem"
+without guessing.
+
+### Empty-body classifier trick
+
+For endpoints we can't safely call (would actually turn the shower on),
+the diagnostic POSTs `{}`. If the caller has access, validation runs
+*after* auth and returns 400. If the caller is forbidden, the backend
+returns 403 *before* validation. So:
+
+- 200/201/400 → access granted
+- 403 → access denied
+
+This is the classifier `tests/integration/_probe.py` uses.
+
+### The fix path
+
+OAuth Authorization Code + PKCE against `B2C_1A_signin`. Same `client_id`,
+same `apim_subscription_key`. See
+[`working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md`](../working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md)
+for the implementation plan.
+
 ## Dead Ends
 
 ### Endpoints That Don't Work

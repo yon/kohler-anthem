@@ -4,7 +4,7 @@ export
 VENV := .venv
 PYTHON := $(VENV)/bin/python3
 
-.PHONY: build check clean deps format help lint publish test typecheck
+.PHONY: build check clean deps format health-check help lint publish test test-integration typecheck
 .DEFAULT_GOAL := help
 
 # =============================================================================
@@ -46,8 +46,14 @@ lint: deps ## Run ruff linter
 publish: clean build ## Publish to PyPI
 	$(PYTHON) -m twine upload dist/*
 
-test: deps ## Run tests
-	$(PYTHON) -m pytest
+test: deps ## Run unit tests (skips integration suite without credentials)
+	$(PYTHON) -m pytest --ignore=tests/integration
+
+test-integration: deps ## Run live-API health checks (requires credentials)
+	$(PYTHON) -m pytest tests/integration -v -s
+
+health-check: deps ## One-shot CLI diagnostic against the live Kohler API
+	$(PYTHON) dev/scripts/health_check.py
 
 typecheck: deps ## Run mypy type checking
 	$(PYTHON) -m mypy src
