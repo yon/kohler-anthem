@@ -5,10 +5,15 @@ Credentials are loaded in priority order:
   2. credential-extraction/kohler-credentials.yaml
 
 If neither is present, all integration tests skip.
+
+For the OAuth (B2C_1A_signin) probe, set ``KOHLER_OAUTH_TOKENS`` to the path
+of a JSON file written by ``dev/scripts/oauth_login.py``. Tests that depend
+on it skip when the file is absent.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -100,3 +105,27 @@ def credentials() -> LiveCredentials:
             "credential-extraction/kohler-credentials.yaml"
         )
     return creds
+
+
+@pytest.fixture(scope="session")
+def oauth_refresh_token() -> str:
+    """Load a refresh token from KOHLER_OAUTH_TOKENS, or skip the OAuth probe.
+
+    Pre-requisite: run ``dev/scripts/oauth_login.py`` once and set
+    ``KOHLER_OAUTH_TOKENS=/path/to/tokens.json``.
+    """
+    path_str = os.environ.get("KOHLER_OAUTH_TOKENS")
+    if not path_str:
+        pytest.skip(
+            "KOHLER_OAUTH_TOKENS not set. Run dev/scripts/oauth_login.py to mint a "
+            "refresh token, then export KOHLER_OAUTH_TOKENS=<path-to-tokens.json>."
+        )
+    path = Path(path_str)
+    if not path.exists():
+        pytest.skip(f"KOHLER_OAUTH_TOKENS={path} does not exist")
+    with path.open() as f:
+        data = json.load(f)
+    refresh_token = data.get("refresh_token")
+    if not refresh_token:
+        pytest.skip(f"{path} has no refresh_token field")
+    return refresh_token

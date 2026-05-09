@@ -5,8 +5,15 @@ Probes every known endpoint and prints a capability matrix. Use this when
 something starts breaking in production to pinpoint exactly which capability
 is revoked.
 
+Two auth modes:
+
+    ROPC (legacy)   — uses username + password. Currently rejected on
+                      /commands/gcs/* by Kohler's backend (May 2026).
+    OAuth (new)     — uses a refresh token from B2C_1A_signin (run
+                      dev/scripts/oauth_login.py first to mint one).
+
 Usage:
-    # via env vars
+    # ROPC mode via env vars
     export KOHLER_USERNAME=...
     export KOHLER_PASSWORD=...
     export KOHLER_CLIENT_ID=...
@@ -21,12 +28,18 @@ Usage:
 
     # or via credential-extraction/kohler-credentials.yaml
     python dev/scripts/health_check.py --yaml credential-extraction/kohler-credentials.yaml
+
+    # OAuth mode (requires a refresh token from oauth_login.py)
+    python dev/scripts/health_check.py \\
+        --yaml credential-extraction/kohler-credentials.yaml \\
+        --oauth-tokens ~/.kohler-tokens.json
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -39,6 +52,7 @@ from integration._probe import (  # noqa: E402
     ProbeSet,
     Status,
     run_full_probe,
+    run_full_probe_with_oauth,
     token_claim_problems,
 )
 
@@ -115,11 +129,11 @@ def render(probe: ProbeSet, api_resource: str) -> int:
     print(BOLD("Kohler Anthem credential health check"))
     print()
 
-    # OAuth
+    # OAuth — works for both ROPC password grant and B2C_1A_signin refresh grant.
     if probe.token.is_ok:
-        print(f"  {GREEN('✓')} ROPC token issued (expires_in={probe.token.expires_in}s)")
+        print(f"  {GREEN('✓')} access token issued (expires_in={probe.token.expires_in}s)")
     else:
-        print(f"  {RED('✗')} ROPC token NOT issued")
+        print(f"  {RED('✗')} access token NOT issued")
         print(f"    error:       {probe.token.error}")
         print(f"    description: {probe.token.error_description}")
         return 2
@@ -221,6 +235,15 @@ def render(probe: ProbeSet, api_resource: str) -> int:
     return 0 if failed == 0 else 1
 
 
+def _read_token_file(path: Path) -> dict[str, str]:
+    """Read a token JSON file written by dev/scripts/oauth_login.py."""
+    with path.open() as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        sys.exit(f"error: {path} is not a JSON object")
+    return data
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -229,10 +252,51 @@ def main() -> int:
         default=None,
         help="Path to credentials YAML (defaults to credential-extraction/kohler-credentials.yaml)",
     )
+    parser.add_argument(
+        "--oauth-tokens",
+        type=Path,
+        default=None,
+        help="Use a refresh token from this JSON file (written by oauth_login.py) "
+        "instead of ROPC. The B2C_1A_signin policy will be used.",
+    )
     args = parser.parse_args()
 
     yaml_path = args.yaml or (REPO_ROOT / "credential-extraction" / "kohler-credentials.yaml")
     creds = load_creds(yaml_path)
+
+    if args.oauth_tokens:
+        # OAuth mode: refresh token + the same APIM key + client_id + api_resource.
+        oauth_required = ("client_id", "apim_subscription_key", "api_resource")
+        missing = [k for k in oauth_required if not creds.get(k)]
+        if missing:
+            print(
+                f"{RED('error')}: missing required credential(s) for OAuth mode: "
+                f"{', '.join(missing)}",
+                file=sys.stderr,
+            )
+            return 2
+        if not args.oauth_tokens.exists():
+            print(f"{RED('error')}: {args.oauth_tokens} does not exist", file=sys.stderr)
+            return 2
+        token_data = _read_token_file(args.oauth_tokens)
+        refresh_token = token_data.get("refresh_token")
+        if not refresh_token:
+            print(
+                f"{RED('error')}: {args.oauth_tokens} has no refresh_token",
+                file=sys.stderr,
+            )
+            return 2
+        probe = asyncio.run(
+            run_full_probe_with_oauth(
+                refresh_token=refresh_token,
+                client_id=creds["client_id"],
+                apim_subscription_key=creds["apim_subscription_key"],
+                api_resource=creds["api_resource"],
+                tenant_id=creds.get("tenant_id"),
+                device_id=creds.get("device_id"),
+            )
+        )
+        return render(probe, creds["api_resource"])
 
     required = ("username", "password", "client_id", "apim_subscription_key", "api_resource")
     missing = [k for k in required if not creds.get(k)]

@@ -87,7 +87,17 @@ This verifies:
 | `kohler_api_resource` | OAuth API scope | Extracted from APK |
 | `kohler_apim_key` | API subscription key | Captured via Frida |
 | `kohler_username` | Your email | You provide |
-| `kohler_password` | Your password | You provide |
+| `kohler_password` | Your password | You provide (legacy ROPC flow only) |
+
+> **Note**: As of May 2026, Kohler's backend rejects ROPC-issued tokens on
+> `/commands/gcs/*` endpoints (warmup, preset control, valve control). The
+> library now supports an OAuth Authorization Code + PKCE flow against the
+> `B2C_1A_signin` policy that the official mobile apps use. With that flow,
+> the username/password are not needed — instead, run
+> `python dev/scripts/oauth_login.py` once to mint a refresh token via an
+> interactive browser sign-in, and the library uses that refresh token for
+> all subsequent traffic. Only `client_id`, `api_resource`, and `apim_key`
+> need to be extracted.
 
 ## Step-by-Step Guide
 
