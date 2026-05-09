@@ -18,6 +18,7 @@ __pycache__/
 .tox/
 .venv
 .vscode/
+.worktrees/
 *.cover
 *.egg
 *.egg-info/
