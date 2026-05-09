@@ -4,7 +4,7 @@ export
 VENV := .venv
 PYTHON := $(VENV)/bin/python3
 
-.PHONY: build check clean deps format health-check help lint publish test test-integration typecheck
+.PHONY: build check clean deps format health-check help lint oauth-login publish test test-integration typecheck
 .DEFAULT_GOAL := help
 
 # =============================================================================
@@ -54,6 +54,15 @@ test-integration: deps ## Run live-API health checks (requires credentials)
 
 health-check: deps ## One-shot CLI diagnostic against the live Kohler API
 	$(PYTHON) dev/scripts/health_check.py
+
+oauth-login: deps ## Interactive B2C_1A_signin sign-in (writes refresh token to OAUTH_TOKENS path)
+	@if [ -z "$(OAUTH_TOKENS)" ]; then \
+		echo "error: set OAUTH_TOKENS to the JSON path you want, e.g. OAUTH_TOKENS=~/.kohler-tokens.json"; \
+		exit 1; \
+	fi
+	$(PYTHON) dev/scripts/oauth_login.py \
+		--yaml credential-extraction/kohler-credentials.yaml \
+		--output $(OAUTH_TOKENS)
 
 typecheck: deps ## Run mypy type checking
 	$(PYTHON) -m mypy src

@@ -173,9 +173,37 @@ This is the classifier `tests/integration/_probe.py` uses.
 ### The fix path
 
 OAuth Authorization Code + PKCE against `B2C_1A_signin`. Same `client_id`,
-same `apim_subscription_key`. See
-[`working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md`](../working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md)
-for the implementation plan.
+same `apim_subscription_key`. The library ships both flows side by side:
+``KohlerConfig`` for the legacy ROPC path (reads-only fallback) and
+``KohlerOAuthConfig`` + a caller-provided ``TokenStore`` for the interactive
+path. The OAuth endpoints differ from ROPC:
+
+- ROPC URL pattern: `…/tfp/{tenant}/B2C_1_ROPC_Auth/oauth2/v2.0/token`
+- B2C_1A_signin pattern: `…/{tenant}/B2C_1A_signin/oauth2/v2.0/{authorize,token}`
+  (no `tfp/` prefix)
+
+#### Interactive sign-in helper
+
+```bash
+make oauth-login OAUTH_TOKENS=~/.kohler-tokens.json
+```
+
+This generates a PKCE pair, opens the browser to the authorize URL, captures
+the redirect on a loopback HTTP server, and writes the resulting access /
+refresh tokens to the JSON file. After that:
+
+```bash
+python dev/scripts/health_check.py \
+    --yaml credential-extraction/kohler-credentials.yaml \
+    --oauth-tokens ~/.kohler-tokens.json
+```
+
+…probes every endpoint with the OAuth-issued bearer. The `/commands/gcs/*`
+rows should classify as `OK` / `BAD_REQUEST` (i.e. auth passed; only the
+empty body was rejected) instead of `BACKEND_FORBIDDEN`.
+
+The original implementation plan lives at
+[`working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md`](../working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md).
 
 ## Dead Ends
 
