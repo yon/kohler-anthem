@@ -48,6 +48,15 @@ class InvalidCredentialsError(AuthenticationError):
     """Invalid username or password."""
 
 
+class ReauthRequired(AuthenticationError):
+    """Refresh token is invalid or expired; user must complete interactive sign-in.
+
+    Distinct from transient network errors: the only path forward is for the
+    application to walk the user through the OAuth Authorization Code + PKCE
+    flow again (e.g. HA's Repairs reauth notification).
+    """
+
+
 class ApiError(KohlerAnthemError):
     """API request failed."""
 

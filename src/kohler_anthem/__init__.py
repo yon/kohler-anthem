@@ -19,9 +19,9 @@ Example:
         await client.turn_on_outlet(device_id, Outlet.SHOWERHEAD)
 """
 
-from .auth import KohlerAuth, TokenInfo
+from .auth import KohlerAuth, KohlerOAuthAuth, TokenInfo, TokenStore
 from .client import KohlerAnthemClient
-from .config import KohlerConfig
+from .config import KohlerConfig, KohlerOAuthConfig
 from .converters import (
     celsius_to_fahrenheit,
     fahrenheit_to_celsius,
@@ -33,6 +33,7 @@ from .exceptions import (
     AuthenticationError,
     DeviceNotFoundError,
     KohlerAnthemError,
+    ReauthRequired,
 )
 from .models import (
     CommandResponse,
@@ -93,6 +94,8 @@ __all__ = [
     "KohlerBaseModel",
     "KohlerConfig",
     "KohlerMqttClient",
+    "KohlerOAuthAuth",
+    "KohlerOAuthConfig",
     "Outlet",
     "OutletConfiguration",
     "OutletDetail",
@@ -100,9 +103,11 @@ __all__ = [
     "OutletType",
     "Preset",
     "PresetResponse",
+    "ReauthRequired",
     "SystemState",
     "TemperatureUnit",
     "TokenInfo",
+    "TokenStore",
     "ValveControlModel",
     "ValveDetail",
     "ValveMode",

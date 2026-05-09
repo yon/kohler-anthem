@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from .auth import KohlerAuth
+from .auth import KohlerAuth, KohlerOAuthAuth, TokenStore
+from .config import KohlerOAuthConfig
 from .const import (
     API_BASE,
     DEFAULT_SKU,
@@ -33,24 +34,44 @@ if TYPE_CHECKING:
 
 
 class KohlerAnthemClient:
-    """Async client for Kohler Anthem Digital Shower API."""
+    """Async client for Kohler Anthem Digital Shower API.
+
+    Accepts either a legacy ``KohlerConfig`` (ROPC flow) or a
+    ``KohlerOAuthConfig`` (B2C_1A_signin Authorization Code + PKCE). The OAuth
+    form is required for full control access; ROPC is kept for reads-only
+    fallback compatibility with older deployments.
+    """
 
     def __init__(
         self,
-        config: KohlerConfig,
+        config: KohlerConfig | KohlerOAuthConfig,
         *,
         timeout: int = REQUEST_TIMEOUT,
+        token_store: TokenStore | None = None,
     ) -> None:
         """Initialize the client.
 
         Args:
-            config: Kohler configuration with credentials and API keys
-            timeout: Request timeout in seconds
+            config: Either ``KohlerConfig`` (ROPC) or ``KohlerOAuthConfig``
+                (Authorization Code + PKCE).
+            timeout: Request timeout in seconds.
+            token_store: Required when ``config`` is ``KohlerOAuthConfig``.
+                Persists the refresh token across sessions.
+
+        Raises:
+            ValueError: ``KohlerOAuthConfig`` provided without a ``token_store``.
         """
         self._config = config
         self._api_base = API_BASE
         self._timeout = aiohttp.ClientTimeout(total=timeout)
-        self._auth = KohlerAuth(config)
+        if isinstance(config, KohlerOAuthConfig):
+            if token_store is None:
+                raise ValueError("KohlerOAuthConfig requires a token_store")
+            self._auth: KohlerAuth | KohlerOAuthAuth = KohlerOAuthAuth(
+                config, token_store=token_store
+            )
+        else:
+            self._auth = KohlerAuth(config)
         self._session: aiohttp.ClientSession | None = None
         self._owns_session = False
 
@@ -67,7 +88,7 @@ class KohlerAnthemClient:
         """Connect and authenticate with the API.
 
         Args:
-            session: Optional existing aiohttp session to use
+            session: Optional existing aiohttp session to use.
         """
         if session:
             self._session = session
@@ -76,7 +97,10 @@ class KohlerAnthemClient:
             self._session = aiohttp.ClientSession(timeout=self._timeout)
             self._owns_session = True
 
-        await self._auth.authenticate(self._session)
+        # ROPC: eagerly mint a token here. OAuth: defer until the first request,
+        # since the refresh-or-reauth decision depends on the stored token.
+        if isinstance(self._auth, KohlerAuth):
+            await self._auth.authenticate(self._session)
 
     async def close(self) -> None:
         """Close the client session."""
