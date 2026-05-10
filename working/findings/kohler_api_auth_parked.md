@@ -25,10 +25,24 @@ originSessionId: 6eb6627b-90fe-4764-8452-4539341093ee
 
 ## Concrete next steps when resuming
 
-1. Run the existing `credential-extraction/Makefile` Genymetion+Frida pipeline (`make emulator-setup`, `frida_bypass.js` already has SSL-pinning bypass on lines 86-119).
-2. Route the emulator's traffic through a mitmproxy.
-3. Sign in to Konnect on the emulator. Capture the `/token` POST. That single capture answers: client_secret? client_assertion JWT? extra params?
-4. Then update KohlerOAuthAuth (in `src/kohler_anthem/auth.py` on `feat/b2c-1a-signin-auth` branch) accordingly and fix the URLs in `KohlerOAuthConfig`.
+The capture pipeline is **fully scripted** as of 2026-05-10 on `feat/emulator-token-capture`. To resume:
+
+1. Put Genymotion Desktop trial creds in `/Volumes/ring/env/kohler.env`
+   (`GENYMOTION_EMAIL`, `GENYMOTION_PASSWORD`).
+2. `cd credential-extraction && make harness`.
+3. Sign in to Konnect on the emulator when prompted (UI flow not yet
+   recorded into `konnect_signin.py`; see `KONNECT_SIGNIN_STEPS` to fill in
+   for fully hands-off runs).
+4. The capture lands at
+   `~/Library/Caches/kohler-anthem/token-captures/<timestamp>/token_capture.json`.
+5. That JSON answers: `client_secret`? `client_assertion` + JWT-bearer? extra
+   params? Update `KohlerOAuthAuth` in `src/kohler_anthem/auth.py` on
+   `feat/b2c-1a-signin-auth` accordingly and fix the URLs/redirect in
+   `KohlerOAuthConfig`.
+
+See `credential-extraction/README.md` for the full pipeline + troubleshooting,
+and `working/plans/2026-05-10_emulator_token_capture.md` for the build-out
+plan.
 
 ## Open PRs (status)
 

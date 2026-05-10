@@ -1,207 +1,157 @@
 #!/usr/bin/env python3
-"""Set up Genymotion emulator for credential extraction.
+"""Set up the Genymotion `KohlerExtraction` emulator.
 
-Creates and starts a Genymotion virtual device with the required specs.
-Requires Genymotion Desktop (30-day trial or licensed).
+Creates and starts a Genymotion virtual device with the harness's required
+specs. Requires Genymotion Desktop (30-day trial or licensed) — the free
+Personal-use tier rejects `gmtool admin create` with "A license is required".
 
-Usage:
-    python3 emulator_setup.py
+`gmtool admin templates` was removed in Genymotion 3.10, so this script
+just attempts `admin create` with the known template names; if the template
+isn't recognized, it surfaces the gmtool error verbatim and offers a fallback
+list of names that have historically worked.
 """
 
 from __future__ import annotations
 
-import shutil
-import subprocess
+import argparse
 import sys
 import time
+from pathlib import Path
 
-# Device configuration
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from env_lib import adb_device_connected, find_gmtool, run
+
 DEVICE_NAME = "KohlerExtraction"
-DEVICE_TEMPLATE = "Samsung Galaxy S10"
-ANDROID_VERSION = "11.0"
-DEVICE_RAM = 4096
+DEVICE_RAM_MB = 4096
 DEVICE_CPU = 4
-
-# gmtool paths (macOS)
-GMTOOL_PATHS = [
-    "gmtool",
-    "/Applications/Genymotion.app/Contents/MacOS/gmtool",
+# (hwprofile, android_version) tried in order
+TEMPLATES = [
+    ("Samsung Galaxy S10", "11.0"),
+    ("Google Pixel 5", "11.0"),
+    ("Google Pixel 6", "12.0"),
+    ("Samsung Galaxy S9", "10.0"),
 ]
 
 
-def find_gmtool() -> str | None:
-    """Find the gmtool binary."""
-    for path in GMTOOL_PATHS:
-        if shutil.which(path):
-            return path
-        try:
-            result = subprocess.run(
-                [path, "--version"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                return path
-        except FileNotFoundError:
-            continue
-    return None
-
-
-def run_gmtool(gmtool: str, args: list[str]) -> subprocess.CompletedProcess:
-    """Run a gmtool command."""
-    return subprocess.run(
-        [gmtool, *args],
-        capture_output=True,
-        text=True,
-    )
+def run_gmtool(gmtool: str, args: list[str]):
+    return run([gmtool, *args], timeout=300)
 
 
 def device_exists(gmtool: str, name: str) -> bool:
-    """Check if a device with the given name exists."""
     result = run_gmtool(gmtool, ["admin", "list"])
-    if result.returncode != 0:
-        return False
-    return name in result.stdout
+    return result.returncode == 0 and name in result.stdout
 
 
 def device_running(gmtool: str, name: str) -> bool:
-    """Check if a device is running."""
     result = run_gmtool(gmtool, ["admin", "list", "--running"])
-    if result.returncode != 0:
-        return False
-    return name in result.stdout
+    return result.returncode == 0 and name in result.stdout
 
 
-def get_available_templates(gmtool: str) -> list[str]:
-    """Get list of available device templates."""
-    result = run_gmtool(gmtool, ["admin", "templates"])
-    if result.returncode != 0:
-        return []
-    return result.stdout.strip().split("\n")
-
-
-def create_device(gmtool: str) -> bool:
-    """Create the extraction device."""
-    print(f"  Creating device '{DEVICE_NAME}'...")
-    print(f"    Template: {DEVICE_TEMPLATE}")
-    print(f"    Android: {ANDROID_VERSION}")
-    print(f"    RAM: {DEVICE_RAM}MB, CPUs: {DEVICE_CPU}")
-
-    result = run_gmtool(
-        gmtool,
-        [
-            "admin",
-            "create",
-            DEVICE_TEMPLATE,
-            ANDROID_VERSION,
-            DEVICE_NAME,
-            "--nbcpu",
-            str(DEVICE_CPU),
-            "--ram",
-            str(DEVICE_RAM),
-        ],
-    )
-
-    if result.returncode != 0:
-        print(f"  ERROR: {result.stderr.strip()}")
-        if "not found" in result.stderr.lower():
+def try_create(gmtool: str) -> bool:
+    """Try each template until one works. Return True on success."""
+    last_err = ""
+    for hwprofile, android in TEMPLATES:
+        print(f"  Trying template: {hwprofile!r} / Android {android}")
+        result = run_gmtool(
+            gmtool,
+            [
+                "admin", "create", hwprofile, android, DEVICE_NAME,
+                "--nbcpu", str(DEVICE_CPU),
+                "--ram", str(DEVICE_RAM_MB),
+            ],
+        )
+        if result.returncode == 0:
+            print("  ✓ Device created")
+            return True
+        err = (result.stderr or result.stdout).strip()
+        print(f"    failed: {err}")
+        last_err = err
+        if "license is required" in err.lower():
             print()
-            print("  Available templates:")
-            for template in get_available_templates(gmtool)[:10]:
-                print(f"    - {template}")
-        return False
-
-    print("  Device created successfully")
-    return True
+            print("  Personal-use license cannot create devices. You need the")
+            print("  Genymotion Desktop 30-day trial. Sign in at:")
+            print("    https://www.genymotion.com/account/login/")
+            print("  and put credentials in /Volumes/ring/env/kohler.env.")
+            return False
+    print()
+    print("  All known templates failed.")
+    print(f"  Last gmtool error: {last_err}")
+    print()
+    print("  Open Genymotion.app GUI → '+ Add device' to see what templates")
+    print("  your license has access to, then add a matching (hwprofile, android)")
+    print("  pair to TEMPLATES in emulator_setup.py.")
+    return False
 
 
 def start_device(gmtool: str) -> bool:
-    """Start the device."""
     print(f"  Starting device '{DEVICE_NAME}'...")
-
     result = run_gmtool(gmtool, ["admin", "start", DEVICE_NAME])
-
     if result.returncode != 0:
-        print(f"  ERROR: {result.stderr.strip()}")
+        print(f"  ERROR: {(result.stderr or result.stdout).strip()}")
         return False
-
-    print("  Device starting...")
     return True
 
 
-def wait_for_adb(timeout: int = 60) -> bool:
-    """Wait for device to be connected via adb."""
+def wait_for_adb(timeout: int = 90) -> bool:
     print("  Waiting for adb connection...")
-
-    start = time.time()
-    while time.time() - start < timeout:
-        result = subprocess.run(
-            ["adb", "devices"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split("\n")
-            for line in lines[1:]:
-                if "\tdevice" in line:
-                    print("  Device connected via adb")
-                    return True
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if adb_device_connected():
+            print("  ✓ Device connected via adb")
+            return True
         time.sleep(2)
-
     print("  ERROR: Timed out waiting for adb connection")
     return False
 
 
-def main() -> int:
-    """Set up Genymotion emulator."""
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Delete the existing KohlerExtraction device and recreate it.",
+    )
+    args = parser.parse_args(argv)
+
     print()
     print("=" * 60)
     print("Genymotion Emulator Setup")
     print("=" * 60)
     print()
 
-    # Find gmtool
     gmtool = find_gmtool()
     if not gmtool:
-        print("  ERROR: gmtool not found")
-        print()
-        print("  Genymotion Desktop is required for emulator setup.")
-        print("  Download from: https://www.genymotion.com/product-desktop/download/")
-        print()
-        print("  Note: You need Genymotion Desktop (30-day trial), not the free edition.")
+        print("  ERROR: gmtool not found.")
+        print("  Install with: brew install --cask genymotion")
         return 1
-
     print(f"  Found gmtool: {gmtool}")
     print()
 
-    # Check if device exists
-    if device_exists(gmtool, DEVICE_NAME):
-        print(f"  Device '{DEVICE_NAME}' already exists")
-
-        # Check if running
+    if args.recreate and device_exists(gmtool, DEVICE_NAME):
         if device_running(gmtool, DEVICE_NAME):
-            print("  Device is already running")
-            print()
-            print("  Next step: make emulator-check")
-            return 0
+            run_gmtool(gmtool, ["admin", "stop", DEVICE_NAME])
+            time.sleep(2)
+        print(f"  Deleting existing '{DEVICE_NAME}'...")
+        result = run_gmtool(gmtool, ["admin", "delete", DEVICE_NAME])
+        if result.returncode != 0:
+            print(f"  WARNING: delete failed: {(result.stderr or result.stdout).strip()}")
+
+    if device_exists(gmtool, DEVICE_NAME):
+        print(f"  Device '{DEVICE_NAME}' already exists.")
     else:
-        # Create device
-        if not create_device(gmtool):
+        if not try_create(gmtool):
             return 1
         print()
 
-    # Start device
     if not device_running(gmtool, DEVICE_NAME):
         if not start_device(gmtool):
             return 1
-
-        # Wait for adb
         print()
         if not wait_for_adb():
             return 1
 
     print()
-    print("  Emulator setup complete!")
+    print("  Emulator setup complete.")
     print()
     print("  Next step: make emulator-frida-setup")
     print()

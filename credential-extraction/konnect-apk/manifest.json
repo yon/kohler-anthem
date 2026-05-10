@@ -1,0 +1,14 @@
+{
+  "package": "com.kohler.hermoth",
+  "version": "3.0.1",
+  "source": "checked-in-lfs",
+  "fetched_at": "2026-05-10",
+  "notes": "Pinned in-repo via git LFS. APKPure's current bundle for 3.0.3 omits the arm64-v8a split, which won't install on Apple Silicon Genymotion. 3.0.1 includes arm64-v8a. Run `make apk-update` to refresh from APKPure when a complete bundle is available.",
+  "abis_present": ["arm64-v8a"],
+  "apks": {
+    "base.apk": "sha256:f4b81d06709e87208640004f812b5dba3b0c2fe21530ab11ddc391c836ec9984",
+    "split_config.arm64_v8a.apk": "sha256:a2bbf5a5c0378c840d7599ea9aab914709b93cfa73e758a5308f14fd09fa8ed8",
+    "split_config.en.apk": "sha256:d1a2210677f2b2afb871931fc38b4d4ef930ce9b7765e3f2f37145aa33ae980f",
+    "split_config.xxxhdpi.apk": "sha256:8c50996edd940f8d4a2c74f2190d1850c09005b44aac297150db1a80e1c310ad"
+  }
+}
