@@ -1,0 +1,70 @@
+869,928d868
+< 
+<     invoke-virtual {p0}, LIs/b;->j()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->h()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     const-string v0, "su"
+< 
+<     invoke-virtual {p0, v0}, LIs/b;->b(Ljava/lang/String;)Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->c()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->e()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->l()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->g()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->f()Z
+< 
+<     move-result v0
+< 
+<     if-nez v0, :cond_1
+< 
+<     invoke-virtual {p0}, LIs/b;->d()Z
+< 
+<     move-result v0
+< 
+<     if-eqz v0, :cond_0
+< 
+<     goto :goto_0
+< 
+<     :cond_0
+930,937d869
+< 
+<     goto :goto_1
+< 
+<     :cond_1
+<     :goto_0
+<     const/4 v0, 0x1
+< 
+<     :goto_1

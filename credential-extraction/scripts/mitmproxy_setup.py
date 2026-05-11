@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the emulator to trust mitmproxy + route HTTPS through it.
+"""Prepare the AVD emulator to trust mitmproxy + route HTTPS through it.
 
 What this does:
   1. Ensure a mitmproxy CA exists. Persists the **full** `~/.mitmproxy/`
@@ -9,10 +9,10 @@ What this does:
      warn loudly otherwise.
   3. Push the CA into `/system/etc/security/cacerts/` on the emulator using
      the Android-format filename (subject hash + `.0`). Requires `adb root` +
-     a writable `/system`, which Genymotion provides. Verifies success by
-     listing the directory afterward.
+     a writable `/system` (the AVD must be booted with `-writable-system`).
+     Verifies success by listing the directory afterward.
   4. Configure the Android system HTTP proxy to point at the host
-     (10.0.3.2 from inside Genymotion) on port 8080.
+     (10.0.2.2 from inside the AVD) on port 8080.
 
 After this, run `mitmdump` (or `make emulator-token-capture`) on the host
 and Konnect traffic will flow through it with TLS visible.
@@ -48,8 +48,16 @@ HOME_CA_PEM = HOME_MITM_DIR / "mitmproxy-ca-cert.pem"
 HOME_CA_KEY = HOME_MITM_DIR / "mitmproxy-ca.pem"  # cert + private key
 
 ANDROID_CACERT_DIR = "/system/etc/security/cacerts"
-GENYMOTION_HOST_FROM_GUEST = "10.0.3.2"
+# AVD: host-from-guest gateway is always 10.0.2.2.
+AVD_GATEWAY = "10.0.2.2"
 DEFAULT_MITM_PORT = "8080"
+
+
+def detect_host_gateway(adb: str) -> str:
+    """Return the host-from-guest IP. Currently AVD-only (10.0.2.2)."""
+    # Keep the call available for future backends; for now, always 10.0.2.2.
+    run([adb, "shell", "ip", "route"])
+    return AVD_GATEWAY
 
 CA_VALIDITY_WARN_DAYS = 30
 
@@ -161,26 +169,80 @@ def compute_subject_hash(pem_path: Path) -> str:
     return result.stdout.strip().splitlines()[0].strip()
 
 
-def ensure_remount_rw(adb: str) -> None:
-    """Acquire root + remount /system rw; raise if it didn't take."""
-    print("  Acquiring adb root + remounting /system rw...")
+def _adb_root(adb: str) -> None:
+    """Restart adbd as root and wait for the daemon to come back."""
     run([adb, "root"])
-    time.sleep(1)
+    time.sleep(2)
+    run([adb, "wait-for-device"], timeout=60)
 
-    # `adb remount` works on Genymotion (userdebug builds). Older builds need explicit mount.
+
+def _system_is_writable(adb: str) -> bool:
+    """Try a real write to /system and return True if it sticks."""
+    test_path = f"{ANDROID_CACERT_DIR}/.harness-write-test"
+    # Use a single shell command; quote the path so spaces are safe.
+    write = run([adb, "shell", f"echo ok > {test_path} 2>&1"])
+    if write.returncode != 0 or "Read-only" in (write.stdout + write.stderr):
+        return False
+    check = run([adb, "shell", f"cat {test_path} && rm {test_path}"])
+    return check.returncode == 0 and "ok" in check.stdout
+
+
+def _wait_for_boot(adb: str, timeout: int = 180) -> bool:
+    """Wait for the device to finish booting after a reboot."""
+    print("  Waiting for boot to complete...")
+    run([adb, "wait-for-device"], timeout=timeout)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = run([adb, "shell", "getprop", "sys.boot_completed"])
+        if result.stdout.strip() == "1":
+            return True
+        time.sleep(2)
+    return False
+
+
+def ensure_remount_rw(adb: str) -> None:
+    """Acquire root + remount /system rw; raise if it doesn't take after one reboot.
+
+    On Android 11+ AVD images with `-writable-system`, `adb remount` creates
+    an overlayfs but the overlay only takes effect after a reboot. So:
+      1. `adb root` + `adb remount` (creates overlay; may say "reboot needed")
+      2. If a write test still fails, `adb disable-verity` + `adb reboot`
+      3. Re-root + re-test
+    """
+    print("  Acquiring adb root + remounting /system rw...")
+    _adb_root(adb)
+
+    # First attempt: plain `adb remount` (some userdebug builds accept this
+    # without a reboot)
     remount = run([adb, "remount"])
-    if remount.returncode != 0:
+    reboot_advised = "reboot" in (remount.stdout + remount.stderr).lower()
+    if remount.returncode != 0 and not reboot_advised:
+        # Old userdebug builds — try explicit mount
         run([adb, "shell", "mount", "-o", "rw,remount", "/system"])
 
-    # Verify /system is actually writable now
-    test_path = f"{ANDROID_CACERT_DIR}/.write-test"
-    touch = run([adb, "shell", "sh", "-c", f"touch {test_path} && rm {test_path}"])
-    if touch.returncode != 0:
+    if _system_is_writable(adb):
+        print("  /system is writable (no reboot needed)")
+        return
+
+    # AVD-style — disable verity + reboot needed
+    print("  /system not yet writable; running disable-verity + reboot...")
+    run([adb, "disable-verity"], timeout=60)
+    run([adb, "reboot"])
+    time.sleep(3)
+    if not _wait_for_boot(adb):
+        raise HarnessError("Device did not finish booting within 180s")
+    _adb_root(adb)
+    remount2 = run([adb, "remount"])
+    if remount2.returncode != 0:
+        run([adb, "shell", "mount", "-o", "rw,remount", "/system"])
+
+    if not _system_is_writable(adb):
         raise HarnessError(
-            "/system is still not writable after adb root + remount.\n"
-            "  On Android 10+ images you may need: adb disable-verity && adb reboot\n"
-            f"  then re-run mitmproxy-setup.\n  stderr: {touch.stderr.strip()}"
+            "/system is still not writable after adb root + disable-verity + reboot + remount.\n"
+            "  On non-userdebug Android images this is by design; the harness needs an\n"
+            "  emulator started with `-writable-system` or a userdebug-rooted device."
         )
+    print("  /system is writable after reboot")
 
 
 def install_system_cert(adb: str, pem_path: Path, subject_hash: str) -> str:
@@ -263,7 +325,11 @@ def clear_proxy(adb: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--proxy-host", default=GENYMOTION_HOST_FROM_GUEST)
+    parser.add_argument(
+        "--proxy-host",
+        default=None,
+        help="Override host-from-guest gateway (default: AVD's 10.0.2.2).",
+    )
     parser.add_argument("--proxy-port", default=DEFAULT_MITM_PORT)
     parser.add_argument(
         "--clear",
@@ -319,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     cache_dir = env.cache_subdir("mitmproxy-ca")
     secure_mkdir(cache_dir, mode=0o700)
 
+    proxy_host = args.proxy_host or detect_host_gateway(adb)
+
     try:
         pem = restore_or_generate_ca(mitmdump, cache_dir)
         verify_ca_validity(pem)
@@ -326,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Subject hash: {subject_hash}")
         ensure_remount_rw(adb)
         install_system_cert(adb, pem, subject_hash)
-        configure_proxy(adb, args.proxy_host, args.proxy_port)
+        print(f"  Detected host-from-guest gateway: {proxy_host}")
+        configure_proxy(adb, proxy_host, args.proxy_port)
     except HarnessError as exc:
         print()
         print(f"ERROR: {exc}")

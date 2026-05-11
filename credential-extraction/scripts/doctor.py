@@ -25,7 +25,6 @@ from env_lib import (
     atomic_write_text,
     find_adb,
     find_frida,
-    find_gmtool,
     find_mitmdump,
     find_openssl,
     load_env,
@@ -45,7 +44,6 @@ def tool_versions() -> list[str]:
     out: list[str] = []
     for name, finder in [
         ("adb", find_adb),
-        ("gmtool", find_gmtool),
         ("frida", find_frida),
         ("mitmdump", find_mitmdump),
         ("openssl", find_openssl),
@@ -69,24 +67,24 @@ def env_status() -> list[str]:
         f"- cache:    `{env.cache_dir}`",
     ]
     if env.env_file_exists():
-        keys = sorted(k for k in env.values if k.startswith(("KOHLER_", "GENYMOTION_")))
+        keys = sorted(k for k in env.values if k.startswith("KOHLER_"))
         out.append(f"- keys present: {', '.join(keys) if keys else '(none)'}")
     return out
 
 
-def emulator_state() -> list[str]:
-    gmtool = find_gmtool()
-    if not gmtool:
-        return ["- gmtool not available — skipping"]
-    listing = run([gmtool, "admin", "list"])
-    running = run([gmtool, "admin", "list", "--running"])
-    out = [
-        f"- devices: ```\n{listing.stdout.strip() or '(none)'}\n```",
-        f"- running: ```\n{running.stdout.strip() or '(none)'}\n```",
-    ]
-    license_info = run([gmtool, "license", "info"])
-    out.append(f"- license: ```\n{license_info.stdout.strip()}\n```")
-    return out
+def avd_state() -> list[str]:
+    """Inventory configured AVDs via avdmanager, if installed."""
+    avdmanager = next(
+        (p for p in [
+            "/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/avdmanager",
+            "/usr/local/share/android-commandlinetools/cmdline-tools/latest/bin/avdmanager",
+        ] if Path(p).is_file()),
+        None,
+    )
+    if not avdmanager:
+        return ["- avdmanager not found — install `make deps`"]
+    listing = run([avdmanager, "list", "avd", "-c"])
+    return [f"- AVDs: ```\n{listing.stdout.strip() or '(none)'}\n```"]
 
 
 def device_state() -> list[str]:
@@ -164,7 +162,7 @@ def main() -> int:
     sections = [
         section("Versions", tool_versions()),
         section("Env / Secrets", env_status()),
-        section("Genymotion", emulator_state()),
+        section("AVD", avd_state()),
         section("Device", device_state()),
         section("Cache layout", cache_layout(env.cache_dir)),
         section("Recent harness runs", recent_runs(env.cache_dir)),

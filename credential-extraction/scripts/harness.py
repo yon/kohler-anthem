@@ -4,14 +4,18 @@
 Runs the full pipeline from a clean machine:
 
   1. Verify required tools are installed and the env file has what it needs.
-  2. Fetch the latest Kohler Konnect APK (cached at $KOHLER_HARNESS_CACHE).
-  3. Sign in to Genymotion via gmtool using $GENYMOTION_EMAIL / $GENYMOTION_PASSWORD.
-  4. Create and start the `KohlerExtraction` device if not already running.
-  5. Install frida-server on the device.
-  6. Install the fetched APK.
-  7. Install the mitmproxy CA into /system/etc/security/cacerts and route the
-     emulator's HTTP/HTTPS through 10.0.3.2:8080.
-  8. Hand off to `token_capture.py` (which runs mitmdump + Frida).
+  2. Verify (or hash-check) the in-repo Konnect APK.
+  3. Patch the APK to bypass Konnect's runtime root check (`Is.b.n()`).
+  4. Boot the KohlerExtraction Android Virtual Device (AVD) with a writable
+     /system partition.
+  5. Push frida-server matching the host's frida-tools version.
+  6. Install the patched APK with `-i com.android.vending` (Pairip check).
+  7. Install the mitmproxy CA into /system/etc/security/cacerts.
+  8. If KOHLER_APIM_CLIENT_CERT_PASSWORD is missing, run a short Frida
+     capture against KeyStore.load to recover the PKCS12 password.
+  9. Extract res/raw/app_certificate.p12 → PEM for mitmdump upstream mTLS.
+ 10. Hand off to `token_capture.py` (mitmdump + Frida) to record the
+     service-account JWT.
 
 Each step is implemented as a separate script under scripts/ so individual
 pieces can be re-run independently. This file's only job is orchestration.
@@ -39,14 +43,13 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 from env_lib import (  # noqa: E402
+    EXTRACTION_DIR,
     PROJECT_ROOT,
-    MissingEnvError,
     RunContext,
     adb_device_connected,
     atomic_write_text,
     find_adb,
     find_frida,
-    find_gmtool,
     find_mitmdump,
     find_openssl,
     find_python,
@@ -57,7 +60,11 @@ from env_lib import (  # noqa: E402
 )
 
 VENV_DIR = PROJECT_ROOT / ".venv"
-REQUIRED_ENV_KEYS = ("GENYMOTION_EMAIL", "GENYMOTION_PASSWORD")
+PATCHED_APK_MANIFEST = EXTRACTION_DIR / "konnect-apk-patched" / "manifest.json"
+# The harness requires no env keys to boot the AVD. Cert-extraction needs
+# KOHLER_APIM_CLIENT_CERT_PEM (path) and KOHLER_APIM_CLIENT_CERT_PASSWORD
+# (recovered automatically by the capture-pfx-password step when missing).
+REQUIRED_ENV_KEYS: tuple[str, ...] = ()
 
 
 @dataclass
@@ -131,7 +138,6 @@ def check_prereqs() -> tuple[bool, list[str]]:
     missing: list[str] = []
     for name, finder in [
         ("adb", find_adb),
-        ("gmtool", find_gmtool),
         ("frida", find_frida),
         ("mitmdump", find_mitmdump),
         ("openssl", find_openssl),
@@ -155,7 +161,9 @@ def check_prereqs() -> tuple[bool, list[str]]:
 
 
 def secrets_check() -> tuple[bool, list[str]]:
-    """Fail loud if the env file is missing or required keys are unset."""
+    """Verify the env file exists and is readable. No env keys are required
+    up-front anymore — capture-pfx-password / extract-client-cert run as part
+    of the harness flow and persist their findings."""
     _step("Verifying secrets")
     env = load_env()
     if not env.env_file.exists():
@@ -170,12 +178,15 @@ def secrets_check() -> tuple[bool, list[str]]:
         _fail("Is /Volumes/ring/ mounted?")
         return False, ["env_file"]
     _ok(f"env file: {env.env_file} → {env.env_file_resolved}")
-    try:
-        env.require(*REQUIRED_ENV_KEYS)
-    except MissingEnvError as exc:
-        _fail(str(exc))
-        return False, list(exc.missing)
-    _ok(f"required keys present: {', '.join(REQUIRED_ENV_KEYS)}")
+    if REQUIRED_ENV_KEYS:
+        from env_lib import MissingEnvError
+
+        try:
+            env.require(*REQUIRED_ENV_KEYS)
+        except MissingEnvError as exc:
+            _fail(str(exc))
+            return False, list(exc.missing)
+        _ok(f"required keys present: {', '.join(REQUIRED_ENV_KEYS)}")
     return True, []
 
 
@@ -186,7 +197,6 @@ def collect_versions() -> dict:
     for tool, finder in [
         ("frida", find_frida),
         ("mitmdump", find_mitmdump),
-        ("gmtool", find_gmtool),
         ("adb", find_adb),
         ("openssl", find_openssl),
     ]:
@@ -244,24 +254,29 @@ def maybe_step(harness_run: HarnessRun, name: str, fn, *, skip: bool = False) ->
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--skip-genymotion-signin",
-        action="store_true",
-        help="Skip gmtool sign-in. Use if you've already signed in manually.",
-    )
-    parser.add_argument(
         "--skip-apk-fetch",
         action="store_true",
-        help="Skip the always-latest APK download — use whatever's already cached.",
+        help="(Deprecated, ignored.) The harness uses the in-repo LFS-tracked APK.",
     )
     parser.add_argument(
         "--skip-capture",
         action="store_true",
-        help="Run everything up to and including mitmproxy setup, then stop.",
+        help="Run everything up to and including cert-extract, then stop.",
     )
     parser.add_argument(
         "--force-apk-download",
         action="store_true",
-        help="Re-download the APK even if a cached copy exists.",
+        help="(Deprecated, ignored.) Use `make apk-update` to refresh the in-repo APK.",
+    )
+    parser.add_argument(
+        "--force-apk-patch",
+        action="store_true",
+        help="Re-run apktool patch + resign even if konnect-apk-patched/ exists.",
+    )
+    parser.add_argument(
+        "--recreate-emulator",
+        action="store_true",
+        help="Delete and recreate the KohlerExtraction AVD before starting.",
     )
     args = parser.parse_args(argv)
 
@@ -311,30 +326,25 @@ def main(argv: list[str] | None = None) -> int:
             overall_exit = 1
             return overall_exit
 
-        if not args.skip_apk_fetch:
-            _step("Fetching latest Konnect APK")
-            extra = ["--force"] if args.force_apk_download else []
-            code = run_script("apk_fetch.py", *extra, log_path=run_ctx.log_path)
-            harness_run.steps.append(StepResult("apk-fetch", code))
-            if code != 0:
-                overall_exit = code
-                return overall_exit
-        else:
-            maybe_step(harness_run, "apk-fetch", lambda: 0, skip=True)
+        _step("Verifying in-repo Konnect APK (git LFS)")
+        code = run_script("apk_fetch.py", "--verify", log_path=run_ctx.log_path)
+        harness_run.steps.append(StepResult("apk-verify", code))
+        if code != 0:
+            overall_exit = code
+            return overall_exit
 
-        if not args.skip_genymotion_signin:
-            _step("Signing in to Genymotion")
-            code = run_script("genymotion_signin.py", log_path=run_ctx.log_path)
-            harness_run.steps.append(StepResult("genymotion-signin", code))
-            if code != 0:
-                overall_exit = code
-                return overall_exit
-        else:
-            maybe_step(harness_run, "genymotion-signin", lambda: 0, skip=True)
+        _step("Patching APK (Is.b.n() → return false, resign with debug key)")
+        patch_args = ["--force"] if args.force_apk_patch else []
+        code = run_script("apk_patch.py", *patch_args, log_path=run_ctx.log_path)
+        harness_run.steps.append(StepResult("apk-patch", code))
+        if code != 0:
+            overall_exit = code
+            return overall_exit
 
-        _step("Starting emulator (KohlerExtraction)")
-        code = run_script("emulator_setup.py", log_path=run_ctx.log_path)
-        harness_run.steps.append(StepResult("emulator-setup", code))
+        _step("Starting Android Virtual Device (KohlerExtraction)")
+        avd_args = ["--recreate"] if args.recreate_emulator else []
+        code = run_script("avd_setup.py", *avd_args, log_path=run_ctx.log_path)
+        harness_run.steps.append(StepResult("avd-setup", code))
         if code != 0:
             overall_exit = code
             return overall_exit
@@ -353,9 +363,10 @@ def main(argv: list[str] | None = None) -> int:
             overall_exit = code
             return overall_exit
 
-        _step("Installing latest Konnect APK on emulator")
-        code = run_script("emulator_apk_install.py", log_path=run_ctx.log_path)
-        harness_run.steps.append(StepResult("apk-install", code))
+        _step("Installing patched Konnect APK (-i com.android.vending)")
+        code = run_script("emulator_apk_install.py", "--patched",
+                          log_path=run_ctx.log_path)
+        harness_run.steps.append(StepResult("apk-install-patched", code))
         if code != 0:
             overall_exit = code
             return overall_exit
@@ -367,6 +378,37 @@ def main(argv: list[str] | None = None) -> int:
             overall_exit = code
             return overall_exit
 
+        # If the env doesn't already hold the PKCS12 password, recover it now
+        # by attaching Frida to a fresh Konnect launch and reading the
+        # KeyStore.load() arg. The script returns 0 on success.
+        env = load_env()
+        if not env.get("KOHLER_APIM_CLIENT_CERT_PASSWORD"):
+            _step("Recovering PKCS12 password via Frida (KeyStore.load hook)")
+            code = run_script("capture_pfx_password.py", log_path=run_ctx.log_path)
+            harness_run.steps.append(StepResult("capture-pfx-password", code))
+            if code != 0:
+                _fail(
+                    "Could not recover the PKCS12 password automatically. "
+                    "Set KOHLER_APIM_CLIENT_CERT_PASSWORD in the env file or "
+                    "re-run `make capture-pfx-password` separately."
+                )
+                overall_exit = code
+                return overall_exit
+        else:
+            maybe_step(harness_run, "capture-pfx-password", lambda: 0, skip=True)
+
+        # Extract res/raw/app_certificate.p12 → PEM for upstream mTLS.
+        env = load_env()
+        if env.get("KOHLER_APIM_CLIENT_CERT_PASSWORD"):
+            _step("Extracting APIM mTLS client cert → PEM")
+            code = run_script("extract_client_cert.py", log_path=run_ctx.log_path)
+            harness_run.steps.append(StepResult("extract-client-cert", code))
+            if code != 0:
+                overall_exit = code
+                return overall_exit
+        else:
+            maybe_step(harness_run, "extract-client-cert", lambda: 0, skip=True)
+
         # Refresh versions now that more is known (apk version present)
         write_versions(run_ctx, collect_versions())
 
@@ -375,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             _ok("Setup complete. Run `make emulator-token-capture` when ready.")
             return 0
 
-        _step("Running token capture")
+        _step("Running token capture (mitmdump + Frida, upstream mTLS on)")
         code = run_script("token_capture.py", log_path=run_ctx.log_path)
         harness_run.steps.append(StepResult("token-capture", code))
         overall_exit = code

@@ -55,7 +55,7 @@ def main() -> int:
     if not devices:
         print("  [ERROR] No devices connected.")
         print()
-        print("  Make sure Genymotion is running with an Android device.")
+        print("  Boot the AVD first: `make avd-setup` (or `make emulator-setup`).")
         print("  Run 'adb devices' to verify.")
         print()
         return 1

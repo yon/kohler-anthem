@@ -1,6 +1,6 @@
 ---
 name: Emulator + Frida + mitmproxy capture harness
-description: How the B2C_1A_signin /token capture pipeline is wired — what's automated, what's still manual, and where artifacts land
+description: How the APIM /token capture pipeline is wired — what's automated, what's still manual, and where artifacts land
 type: reference
 ---
 
@@ -8,35 +8,42 @@ The capture harness was built on 2026-05-10 (branch `feat/emulator-token-capture
 
 ## What runs autonomously
 
-1. **Tool checks** — `tools_check.py` verifies gmtool, adb, frida (in venv), mitmdump, jadx, jq, openssl.
-2. **APK download** — `apk_fetch.py` pulls the latest Konnect APK from APKPure's CDN. Detects version from the base64-encoded `_fn=` query param on the redirect target. Falls back to cached previous version, then to the legacy checked-in `kohler-konnect-3.0.1-apk/` dir.
-3. **Genymotion sign-in** — `genymotion_signin.py` runs `gmtool config --email --password` using creds from `/Volumes/ring/env/kohler.env`.
-4. **Emulator create + start** — `emulator_setup.py` (Samsung Galaxy S10 / Android 11 / 4 GB RAM).
-5. **Frida-server push** — `frida_setup.py` downloads the right frida-server binary from GitHub releases for the device's ABI, pushes to `/data/local/tmp/`, starts it.
-6. **APK install** — `emulator_apk_install.py` does `adb install-multiple` of the split APKs from `~/Library/Caches/kohler-anthem/konnect-apk/latest/`.
-7. **mitmproxy cert + proxy** — `mitmproxy_setup.py` boots mitmdump briefly to generate the CA, computes the OpenSSL old-style subject hash, pushes to `/system/etc/security/cacerts/<hash>.0` with `adb root` + remount, then sets the Android global `http_proxy` to `10.0.3.2:8080`.
-8. **mitmdump + Frida + parse** — `token_capture.py` runs mitmdump with `save_stream_file`, launches Konnect via `frida -U -f com.kohler.hermoth -l frida_bypass.js`, waits for Ctrl-C, parses the flow file for `~d b2clogin.com ~p /token` POSTs, writes structured JSON.
+1. **prereqs** — `harness.py` verifies adb, frida (in venv), mitmdump, openssl, and the project venv.
+2. **secrets-check** — confirms the `.env` symlink resolves to a populated file.
+3. **apk-verify** — `apk_fetch.py --verify` hashes the in-repo `konnect-apk/` against `manifest.json`.
+4. **apk-patch** — `apk_patch.py` apktool-decompiles `base.apk`, replaces `Is.b.n()` body with `return false`, removes the broken `@null` resource ref, rebuilds, zipaligns, and apksigner-signs base + all splits with the same debug keystore. Output: `konnect-apk-patched/`.
+5. **avd-setup** — `avd_setup.py` installs missing Android SDK components (emulator, system-image, build-tools) via sdkmanager, creates the `KohlerExtraction` AVD (Pixel 5, Android 11, google_apis, arm64-v8a) if missing, starts the emulator with `-writable-system`, waits for boot, runs `adb root` + `adb remount`.
+6. **frida-setup** — `frida_setup.py` downloads the frida-server binary matching the host's frida-tools version, pushes to `/data/local/tmp/`, starts it detached.
+7. **apk-install-patched** — `emulator_apk_install.py --patched` does `adb install-multiple -i com.android.vending` (the `-i` flag spoofs the installer-package so Pairip's license check is satisfied), then auto-grants `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`.
+8. **mitmproxy-setup** — `mitmproxy_setup.py` boots mitmdump briefly to generate the CA, computes the OpenSSL old-style subject hash, pushes to `/system/etc/security/cacerts/<hash>.0` with `adb root` + remount, sets the Android global `http_proxy` to `10.0.2.2:8080`.
+9. **capture-pfx-password (conditional)** — `capture_pfx_password.py` only fires if `KOHLER_APIM_CLIENT_CERT_PASSWORD` is missing. Spawns Konnect under Frida, reads the `char[]` arg passed to `KeyStore.load(InputStream, char[])`, prints the recovered password.
+10. **extract-client-cert** — `extract_client_cert.py` unzips `res/raw/app_certificate.p12` from `konnect-apk/base.apk` and converts it to a PEM via `openssl pkcs12 -provider legacy -provider default` (the .p12 uses RC2-40-CBC, disabled by default in OpenSSL 3.x). Output goes to `$KOHLER_APIM_CLIENT_CERT_PEM`.
+11. **token-capture** — `token_capture.py` runs mitmdump with `--set client_certs=<pem>` (so upstream mTLS to the APIM gateway still works) + `save_stream_file`, launches Konnect via `frida -U -f com.kohler.hermoth -l frida_bypass.js`, auto-taps "Continue" on `LocationPermissionActivity` then "Sign In" on `AzureLoginActivity`, waits for Ctrl-C or `--wait-seconds`, parses the flow file for `~h (b2clogin.com|kohlerkonnect-apim) ~p /token`, writes structured JSON.
 
 ## What still needs manual interaction (today)
 
 | Step | Why | How to automate later |
 |------|-----|----------------------|
-| Genymotion account sign-up | Their service requires email verification once | Use the same account in `GENYMOTION_EMAIL` going forward; trial limit is per-account. |
-| Konnect login flow inside the emulator | UI taps not recorded yet | After first successful capture, populate `KONNECT_SIGNIN_STEPS` in `konnect_signin.py` using `adb shell uiautomator dump` output. Then `make harness` becomes truly hands-off. |
+| Konnect login form inside the emulator | UI taps for email/password not recorded yet | After first successful capture, populate `KONNECT_SIGNIN_STEPS` in `konnect_signin.py` using `adb shell uiautomator dump` output. |
+| Sign-In click → `/token` fire | The auto-tap fires the click but on a freshly-booted AVD with no cached state, Konnect's downstream call sometimes silently no-ops | Persist Konnect's account-bootstrap state between runs (or pre-populate it) |
 
 ## Where things live
 
-- **Secrets:** `/Volumes/ring/env/kohler.env` (symlinked as repo's `.env`). Loaded by direnv (`.envrc` → `dotenv_if_exists`) and Make (`-include .env`) and the Python scripts (via `env_lib.load_env`).
+- **Secrets:** `/Volumes/ring/env/kohler.env` (symlinked as repo's `.env`). Loaded by direnv (`.envrc` → `dotenv_if_exists`), Make (`-include .env`), and the Python scripts (via `env_lib.load_env`).
 - **Binary cache:** `~/Library/Caches/kohler-anthem/`. Survives repo wipes. Sized for the ~70 MB Konnect XAPK (the `/Volumes/ring` sparse-bundle is too small).
-- **Plan + findings:** `working/plans/2026-05-10_emulator_token_capture.md`, `working/findings/kohler_api_auth_parked.md`.
+- **Plan + findings:** `working/findings/auth_architecture_2026-05-10.md` for the live architecture writeup; `working/findings/kohler_api_auth_parked.md` is the older spike doc (superseded).
 
 ## Re-running individual steps
 
 The harness orchestrator is thin — each script also works standalone. Common partial reruns:
 
 ```
-make apk-fetch                   # latest APK only
+make apk-verify                  # hash-check the in-repo APK
+make apk-patch                   # re-patch + resign
+make avd-setup                   # boot the AVD
 make emulator-mitmproxy-setup    # re-install CA + proxy (e.g. after device reboot)
+make capture-pfx-password        # recover PKCS12 password via Frida
+make extract-client-cert         # PKCS12 → PEM
 make emulator-token-capture      # capture without re-installing everything
 ```
 
@@ -44,9 +51,11 @@ The Make targets are documented in `make help` (in `credential-extraction/`).
 
 ## Tested?
 
-- `make tools-check` — green on a clean machine after `make deps`.
-- `make apk-fetch` — successfully downloaded Konnect 3.0.3 XAPK from APKPure on 2026-05-10.
-- `make genymotion-signin` — verified failure mode when env is missing (clear error message + sign-up link).
-- `make harness` end-to-end — **not yet** run because Genymotion creds need a human sign-up; will happen on first real use.
+- `make deps` — installs everything cleanly on a fresh machine (verified 2026-05-10).
+- `make tools-check` — green.
+- `make apk-fetch --verify` — green against the in-repo LFS-tracked APK.
+- `make apk-patch` — produces a working installable patched bundle.
+- `make harness --skip-capture` — runs all 10 setup stages green, idempotent on re-run.
+- `make emulator-token-capture` — captures `/token/api/v1/token/` 201 with the service-account JWT (verified 2026-05-10).
 
 If APKPure breaks (different anti-bot behavior, URL pattern change), the version detection and download URL constants are at the top of `apk_fetch.py`.

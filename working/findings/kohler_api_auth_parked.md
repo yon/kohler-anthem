@@ -4,6 +4,18 @@ description: As of May 2026 the ROPC-token rewrite hypothesis is unverified; Pha
 type: project
 originSessionId: 6eb6627b-90fe-4764-8452-4539341093ee
 ---
+**Status as of 2026-05-10 (UPDATED later same day)**: **SUPERSEDED.** The "switch to B2C_1A_signin" hypothesis was wrong. The actual auth architecture was reverse-engineered end-to-end via the emulator capture harness — see `auth_architecture_2026-05-10.md` for the definitive picture and `konnect_runtime_bypass_notes.md` for the runtime bypass details.
+
+**TL;DR of what's now known**:
+- Konnect authenticates ITSELF to Kohler's APIM gateway via **mTLS** using `res/raw/app_certificate.p12` (password `d6jaqQ1nJxFAuXs`, captured via Frida on `KeyStore.load`).
+- APIM exchanges that for a B2C ROPC token under `admin.user@kohler.com` (`B2C_1_ROPC_Auth` policy) and returns it via `GET /token/api/v1/token/`.
+- That access_token is what unlocks `/commands/*`. The library was getting 403 because it was missing both the mTLS cert AND that access_token.
+- The user's identity is a separate B2C user-sign-in flow that happens AFTER the app obtains the service-account token — not yet captured end-to-end but is mostly orthogonal to the library's needs.
+
+The "PARKED" content below is **kept for historical context** but is no longer the right plan.
+
+---
+
 **Status as of 2026-05-10**: The auth rewrite plan in `working/plans/2026-05-09_b2c_1a_signin_auth_rewrite.md` is PARKED. Phase 0 spike completed but did not verify the central hypothesis.
 
 **Why:** Why the original ROPC-rejection-on-/commands/* problem hasn't been fixed yet.
@@ -27,12 +39,11 @@ originSessionId: 6eb6627b-90fe-4764-8452-4539341093ee
 
 The capture pipeline is **fully scripted** as of 2026-05-10 on `feat/emulator-token-capture`. To resume:
 
-1. Put Genymotion Desktop trial creds in `/Volumes/ring/env/kohler.env`
-   (`GENYMOTION_EMAIL`, `GENYMOTION_PASSWORD`).
-2. `cd credential-extraction && make harness`.
-3. Sign in to Konnect on the emulator when prompted (UI flow not yet
-   recorded into `konnect_signin.py`; see `KONNECT_SIGNIN_STEPS` to fill in
-   for fully hands-off runs).
+1. `cd credential-extraction && make harness` — boots the AVD, patches the
+   APK, installs everything, and captures the APIM `/token` JWT.
+2. Sign in to Konnect on the emulator when prompted (the email/password UI
+   flow is not yet recorded into `konnect_signin.py`; see
+   `KONNECT_SIGNIN_STEPS` to fill in for fully hands-off runs).
 4. The capture lands at
    `~/Library/Caches/kohler-anthem/token-captures/<timestamp>/token_capture.json`.
 5. That JSON answers: `client_secret`? `client_assertion` + JWT-bearer? extra

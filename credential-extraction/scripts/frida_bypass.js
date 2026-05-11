@@ -1,6 +1,6 @@
 /*
  * Kohler Konnect Bypass Script
- * Allows app to function in rooted Genymotion emulator
+ * Allows app to function on a rooted Android emulator (AVD).
  *
  * Required bypasses:
  * - License check (Pairip)
@@ -14,6 +14,22 @@
 if (Java.available) {
     Java.perform(function() {
         console.log("[*] Kohler Konnect bypass loaded");
+
+        // NOTE: with the apktool-patched APK, the Konnect-side root check
+        // (Is.b.n) returns false at the bytecode level, so we no longer need
+        // Frida hooks to neutralize it. We DO still need:
+        //   - LicenseClient bypass (Pairip — defense in depth alongside the
+        //     installer-package=com.android.vending install flag)
+        //   - SSL pinning bypass (mitmproxy interception)
+        //   - KeyStore password capture (one-time recovery of the PKCS12 pw)
+        //   - APIM key capture from SharedPreferences (legacy, still useful)
+        //
+        // The previous version of this script tried Java.deoptimizeEverything
+        // + classloader switching + AlertDialog.show suppressors to make the
+        // Is.b.n hook fire. None of that worked on Android 11 AVD (ART JIT
+        // inlines the boolean helper methods even after deopt), AND the
+        // combined hook overhead caused Konnect's SplashActivity → AzureLogin
+        // transition to ANR. So we keep the script lean here.
 
         // =============== LICENSE CHECK BYPASS ===============
         try {
@@ -118,27 +134,36 @@ if (Java.available) {
             console.log("[-] TrustManagerImpl bypass failed: " + e);
         }
 
-        // =============== ROOT DETECTION BYPASS ===============
+        // =============== ROOTBEER NATIVE BYPASS ============================
+        // Konnect ships RootBeer (confirmed via dex string scan). The Java
+        // wrapper class has been renamed by ProGuard, but the native helper
+        // `com.scottyab.rootbeer.RootBeerNative` keeps its name (JNI symbol
+        // requirement). Neutralizing the native bridge handles the binary-
+        // exists scan; the Java-side checks are handled by the dialog
+        // suppressor below.
         try {
-            var IsB = Java.use("Is.b");
-            IsB.n.implementation = function() {
-                console.log("[*] Is.b.n() root detection bypassed");
-                return false;
-            };
-            IsB.a.implementation = function() { return false; };
-            IsB.b.overload('java.lang.String').implementation = function(s) { return false; };
-            IsB.c.implementation = function() { return false; };
-            IsB.d.implementation = function() { return false; };
-            IsB.e.implementation = function() { return false; };
-            IsB.f.implementation = function() { return false; };
-            IsB.g.implementation = function() { return false; };
-            IsB.h.implementation = function() { return false; };
-            IsB.j.implementation = function() { return false; };
-            IsB.l.implementation = function() { return false; };
-            console.log("[+] Is.b root detection bypass installed");
-        } catch(e) {
-            console.log("[-] Is.b bypass failed: " + e);
+            var RootBeerNative = Java.use("com.scottyab.rootbeer.RootBeerNative");
+            try {
+                RootBeerNative.checkForRoot.overloads.forEach(function(ov) {
+                    ov.implementation = function() { return 0; };
+                });
+            } catch (e) {}
+            console.log("[+] RootBeerNative bypass installed");
+        } catch (e) {
+            console.log("[-] RootBeerNative bypass failed: " + e);
         }
+
+        // (All the dialog/Activity.finish/Resources.getString/K3 hooks that
+        // used to live here were removed 2026-05-10 after the apktool patch
+        // proved sufficient. Hook overhead caused ANR on splash → login
+        // transition. See konnect_runtime_bypass_notes.md for history.)
+
+        // Is.b root-detection hooks are NO-OP now — the apktool patch
+        // (scripts/apk_patch.py) makes Is.b.n() return false at the bytecode
+        // level, which is what actually works. These hooks installed cleanly
+        // but never fired because ART had JIT-inlined Is.b's boolean helpers.
+        // Left as a no-op block in case a future Konnect build deobfuscates
+        // and we want to re-enable.
 
         var rootPaths = [
             "/system/xbin/su", "/system/bin/su", "/sbin/su", "/su/bin/su",
@@ -237,7 +262,8 @@ if (Java.available) {
                     "ro.secure": "1"
                 };
                 if (spoofProps.hasOwnProperty(key)) return spoofProps[key];
-                if (key.indexOf("genymotion") !== -1 || key.indexOf("vbox") !== -1) return "";
+                // Suppress known emulator-vendor strings so the app doesn't bail on detection.
+                if (key.indexOf("vbox") !== -1 || key.indexOf("qemu") !== -1) return "";
                 return originalGet.call(this, key);
             };
             SystemProperties.get.overload('java.lang.String', 'java.lang.String').implementation = function(key, def) {
@@ -262,52 +288,16 @@ if (Java.available) {
             console.log("[-] TelephonyManager bypass failed: " + e);
         }
 
-        // =============== PROXY DETECTION BYPASS ===============
-        try {
-            var System = Java.use("java.lang.System");
-            var originalGetProperty = System.getProperty.overload('java.lang.String');
-            System.getProperty.overload('java.lang.String').implementation = function(key) {
-                var proxyKeys = ["http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort"];
-                if (proxyKeys.indexOf(key) !== -1) return null;
-                return originalGetProperty.call(this, key);
-            };
-            System.getProperty.overload('java.lang.String', 'java.lang.String').implementation = function(key, def) {
-                var proxyKeys = ["http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort"];
-                if (proxyKeys.indexOf(key) !== -1) return def;
-                return this.getProperty(key, def);
-            };
-            console.log("[+] System.getProperty proxy bypass installed");
-        } catch(e) {}
-
-        try {
-            var Settings$Global = Java.use("android.provider.Settings$Global");
-            var originalGetString = Settings$Global.getString.overload('android.content.ContentResolver', 'java.lang.String');
-            Settings$Global.getString.overload('android.content.ContentResolver', 'java.lang.String').implementation = function(resolver, name) {
-                if (name === "http_proxy" || name === "global_http_proxy_host" || name === "global_http_proxy_port") return null;
-                return originalGetString.call(this, resolver, name);
-            };
-            console.log("[+] Settings.Global proxy bypass installed");
-        } catch(e) {}
-
-        try {
-            var ConnectivityManager = Java.use("android.net.ConnectivityManager");
-            ConnectivityManager.getDefaultProxy.implementation = function() { return null; };
-            console.log("[+] ConnectivityManager.getDefaultProxy bypass installed");
-        } catch(e) {}
-
-        try {
-            var AndroidProxy = Java.use("android.net.Proxy");
-            AndroidProxy.getHost.overload('android.content.Context').implementation = function(ctx) { return null; };
-            AndroidProxy.getPort.overload('android.content.Context').implementation = function(ctx) { return -1; };
-            console.log("[+] android.net.Proxy bypass installed");
-        } catch(e) {}
-
-        try {
-            var ProxyInfo = Java.use("android.net.ProxyInfo");
-            ProxyInfo.getHost.implementation = function() { return null; };
-            ProxyInfo.getPort.implementation = function() { return 0; };
-            console.log("[+] ProxyInfo bypass installed");
-        } catch(e) {}
+        // =============== PROXY DETECTION BYPASS (DISABLED) ===============
+        // Disabled 2026-05-10: these hooks hide the system proxy from the app
+        // so well that the app's own networking code stops using it — which
+        // defeats the whole point of routing through mitmproxy. The legacy
+        // APIM-extraction flow assumed transparent-mode mitmproxy + iptables;
+        // the /token-capture harness uses Android's system-proxy setting, so
+        // the app MUST see http_proxy=10.0.2.2:8888 to actually route through.
+        // If Konnect ever adds anti-MitM proxy detection that crashes the app,
+        // re-enable these for the specific call sites only.
+        console.log("[*] proxy-detection bypass intentionally disabled");
 
         // =============== APIM KEY CAPTURE ===============
         // Capture apim_key when stored in SharedPreferences
@@ -367,6 +357,98 @@ if (Java.available) {
             }, 1000);
             console.log("[*] SecurePreferences hook scheduled (waiting for class to load)");
         }
+
+        // =============== KEYSTORE PASSWORD CAPTURE =========================
+        // Konnect uses res/raw/auth_certificate.pfx as a client cert for
+        // mTLS to the APIM gateway. The PFX password is the missing piece
+        // for the auth-rewrite. Hook KeyStore.load and KeyManagerFactory.init
+        // — both receive char[] passwords — and dump them when called.
+        function dumpCharArray(label, chars) {
+            if (!chars) return;
+            try {
+                var s = Java.use("java.lang.String").$new(chars);
+                if (s && s.length() > 0) {
+                    console.log("");
+                    console.log("================================================================");
+                    console.log("CAPTURED CRED [" + label + "]: " + s);
+                    console.log("================================================================");
+                    console.log("");
+                }
+            } catch (e) {
+                console.log("[-] dumpCharArray failed: " + e);
+            }
+        }
+
+        try {
+            var KeyStore = Java.use("java.security.KeyStore");
+            KeyStore.load.overload('java.io.InputStream', '[C').implementation = function(stream, password) {
+                dumpCharArray("KeyStore.load", password);
+                return this.load(stream, password);
+            };
+            console.log("[+] KeyStore.load(InputStream,char[]) hook installed");
+        } catch (e) {
+            console.log("[-] KeyStore.load hook failed: " + e);
+        }
+
+        try {
+            var KMF = Java.use("javax.net.ssl.KeyManagerFactory");
+            KMF.init.overload('java.security.KeyStore', '[C').implementation = function(ks, password) {
+                dumpCharArray("KeyManagerFactory.init", password);
+                return this.init(ks, password);
+            };
+            console.log("[+] KeyManagerFactory.init hook installed");
+        } catch (e) {
+            console.log("[-] KeyManagerFactory.init hook failed: " + e);
+        }
+
+        // OkHttp client-cert builder — Konnect uses OkHttp, so if it's
+        // configuring client certs via the new heldCertificate API, catch
+        // that too.
+        try {
+            var HandshakeCertificates = Java.use("okhttp3.tls.HandshakeCertificates");
+            console.log("[+] HandshakeCertificates class found");
+        } catch (e) { /* not bundled */ }
+
+        // Also catch raw PKCS12 loads via PKCS12KeyStore directly
+        try {
+            var PKCS12 = Java.use("sun.security.pkcs12.PKCS12KeyStore");
+            PKCS12.engineLoad.overload('java.io.InputStream', '[C').implementation = function(stream, password) {
+                dumpCharArray("PKCS12KeyStore.engineLoad", password);
+                return this.engineLoad(stream, password);
+            };
+            console.log("[+] PKCS12KeyStore.engineLoad hook installed");
+        } catch (e) { /* not directly accessible — fine */ }
+
+        // =============== INTENT TRACER ====================================
+        // Log every startActivity call so we can see what Konnect launches
+        // when the user taps Sign In (Chrome Custom Tab? WebView activity?
+        // implicit intent to a browser?). Lightweight enough to leave on.
+        try {
+            var Activity = Java.use("android.app.Activity");
+            Activity.startActivity.overload('android.content.Intent').implementation = function(intent) {
+                console.log("[->] startActivity: " + intent.toString());
+                return this.startActivity(intent);
+            };
+            Activity.startActivityForResult.overload('android.content.Intent', 'int').implementation = function(intent, code) {
+                console.log("[->] startActivityForResult(" + code + "): " + intent.toString());
+                return this.startActivityForResult(intent, code);
+            };
+            console.log("[+] startActivity tracer installed");
+        } catch (eAct) {
+            console.log("[-] startActivity tracer failed: " + eAct);
+        }
+
+        // CustomTabsIntent is OkHttp/AndroidX's wrapper around launching a
+        // Chrome Custom Tab. If Konnect uses CCT for sign-in, we want to see
+        // the URL.
+        try {
+            var CustomTabsIntent = Java.use("androidx.browser.customtabs.CustomTabsIntent");
+            CustomTabsIntent.launchUrl.overload('android.content.Context', 'android.net.Uri').implementation = function(ctx, uri) {
+                console.log("[->] CustomTabsIntent.launchUrl: " + uri.toString());
+                return this.launchUrl(ctx, uri);
+            };
+            console.log("[+] CustomTabsIntent.launchUrl tracer installed");
+        } catch (eCT) { /* not present */ }
 
         console.log("[*] All bypasses loaded");
     });

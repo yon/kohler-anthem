@@ -13,6 +13,8 @@ system's index schema; harmless for human readers).
 | [`apk_static_findings.md`](apk_static_findings.md) | What the Kohler Konnect 3.0.1 APK reveals about auth, endpoints, cert files. Avoid re-doing this analysis. |
 | [`workflow_conventions.md`](workflow_conventions.md) | git-LFS quirks, worktree setup, where credentials live, build commands. |
 | [`harness_layout.md`](harness_layout.md) | Where the emulator/Frida/mitmproxy capture harness lives, what's automated vs manual, where artifacts go. |
+| [`auth_architecture_2026-05-10.md`](auth_architecture_2026-05-10.md) | **Definitive auth model**: APIM mTLS + service-account ROPC + B2C user sign-in. Supersedes the parked "switch to B2C_1A_signin" theory. PKCS12 password, JWT contents, all the IDs. |
+| [`konnect_runtime_bypass_notes.md`](konnect_runtime_bypass_notes.md) | How we got Konnect to run on a non-rooted-looking emulator: apktool smali patch, Pairip workaround, mitmproxy upstream client cert config. |
 
 When picking up auth-rewrite work after a break, start with
 `kohler_api_auth_parked.md` — it has the resume path.

@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env_lib import (
     find_adb,
     find_frida,
-    find_gmtool,
     find_mitmdump,
 )
 
@@ -26,12 +25,10 @@ TOOLS = [
     ("jadx", "APK decompiler", "brew install jadx", lambda: shutil.which("jadx")),
     ("jq", "JSON processor", "brew install jq", lambda: shutil.which("jq")),
     ("mitmdump", "mitmproxy CLI", "brew install mitmproxy", find_mitmdump),
+    ("apktool", "APK patcher", "brew install apktool", lambda: shutil.which("apktool")),
+    ("sdkmanager", "Android SDK manager", "brew install --cask android-commandlinetools",
+     lambda: shutil.which("sdkmanager")),
     ("openssl", "OpenSSL CLI", "(macOS includes this by default)", lambda: shutil.which("openssl")),
-]
-
-# Optional but expected on a fully-configured machine
-SOFT_TOOLS = [
-    ("gmtool", "Genymotion Desktop CLI", "brew install --cask genymotion", find_gmtool),
 ]
 
 
@@ -75,15 +72,6 @@ def main() -> int:
         else:
             print(f"  [MISSING] {name} - {description}")
             missing.append((name, description, install_cmd))
-
-    # Soft checks — print but don't fail
-    print()
-    for name, description, install_cmd, finder in SOFT_TOOLS:
-        if finder():
-            print(f"  [OK] {name}: {description}")
-        else:
-            print(f"  [SOFT-MISSING] {name} — {description}")
-            print(f"                  install: {install_cmd}")
 
     print()
 

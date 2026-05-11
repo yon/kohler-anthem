@@ -3,7 +3,7 @@
   "version": "3.0.1",
   "source": "checked-in-lfs",
   "fetched_at": "2026-05-10",
-  "notes": "Pinned in-repo via git LFS. APKPure's current bundle for 3.0.3 omits the arm64-v8a split, which won't install on Apple Silicon Genymotion. 3.0.1 includes arm64-v8a. Run `make apk-update` to refresh from APKPure when a complete bundle is available.",
+  "notes": "Pinned in-repo via git LFS. APKPure's current bundle for 3.0.3 omits the arm64-v8a split, which won't install on the Apple-Silicon AVD. 3.0.1 includes arm64-v8a. Run `make apk-update` to refresh from APKPure when a complete bundle is available.",
   "abis_present": ["arm64-v8a"],
   "apks": {
     "base.apk": "sha256:f4b81d06709e87208640004f812b5dba3b0c2fe21530ab11ddc391c836ec9984",

@@ -187,13 +187,6 @@ def find_tool(*candidates: str) -> str | None:
     return None
 
 
-def find_gmtool() -> str | None:
-    return find_tool(
-        "gmtool",
-        "/Applications/Genymotion.app/Contents/MacOS/gmtool",
-    )
-
-
 def find_frida() -> str | None:
     return find_tool(str(VENV_DIR / "bin" / "frida"), "frida")
 

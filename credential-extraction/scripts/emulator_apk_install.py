@@ -7,9 +7,9 @@ you want to install something else (e.g. a freshly-downloaded update that
 hasn't been promoted yet).
 
 Pre-flight checks the device's ABI against the APKs in the source dir and
-fails fast if an ABI-specific split is missing (Genymotion devices are
-arm64-v8a on Apple Silicon, x86_64 on Intel — installing an armeabi-v7a-only
-bundle would fail with INSTALL_FAILED_NO_MATCHING_ABIS).
+fails fast if an ABI-specific split is missing (the AVD is arm64-v8a on
+Apple Silicon; installing an armeabi-v7a-only bundle would fail with
+INSTALL_FAILED_NO_MATCHING_ABIS).
 """
 
 from __future__ import annotations
@@ -22,7 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env_lib import EXTRACTION_DIR, find_adb, run
 
 REPO_APK_DIR = EXTRACTION_DIR / "konnect-apk"
+PATCHED_APK_DIR = EXTRACTION_DIR / "konnect-apk-patched"
 PACKAGE_NAME = "com.kohler.hermoth"
+# Konnect's Pairip license shim shows "Check that Google Play is enabled"
+# unless the installer-package reads as `com.android.vending`.
+PAIRIP_INSTALLER_PKG = "com.android.vending"
 
 # ABI suffix mapping for the typical Konnect split-APK names
 ABI_SPLIT_SUFFIX = {
@@ -33,9 +37,11 @@ ABI_SPLIT_SUFFIX = {
 }
 
 
-def resolve_apk_dir(override: str | None) -> Path:
+def resolve_apk_dir(override: str | None, patched: bool = False) -> Path:
     if override:
         return Path(override).expanduser().resolve()
+    if patched:
+        return PATCHED_APK_DIR
     return REPO_APK_DIR
 
 
@@ -99,7 +105,7 @@ def check_abi_match(apk_dir: Path, abi: str | None) -> tuple[bool, str]:
     return True, f"device ABI {abi} matches {matching[0].name}"
 
 
-def install_split_apks(adb: str, apk_dir: Path) -> bool:
+def install_split_apks(adb: str, apk_dir: Path, *, patched: bool = False) -> bool:
     apk_files = sorted(apk_dir.glob("*.apk"))
     if not apk_files:
         print(f"  ERROR: No APK files found in {apk_dir}")
@@ -109,7 +115,11 @@ def install_split_apks(adb: str, apk_dir: Path) -> bool:
     for apk in apk_files:
         print(f"    - {apk.name}")
 
-    cmd = ["install-multiple"] + [str(apk) for apk in apk_files]
+    cmd: list[str] = ["install-multiple"]
+    if patched:
+        # Spoof installer-package so Pairip's license shim doesn't complain.
+        cmd.extend(["-i", PAIRIP_INSTALLER_PKG])
+    cmd.extend(str(apk) for apk in apk_files)
     result = run_adb(adb, cmd)
 
     if result.returncode != 0 and "INSTALL_FAILED_VERSION_DOWNGRADE" in result.stderr:
@@ -121,6 +131,15 @@ def install_split_apks(adb: str, apk_dir: Path) -> bool:
         else:
             print("  ERROR: Failed to uninstall existing app")
             return False
+
+    if (
+        result.returncode != 0
+        and "signatures do not match" in (result.stderr + result.stdout).lower()
+    ):
+        print()
+        print("  Signature mismatch with installed copy. Uninstalling and retrying...")
+        if uninstall_app(adb):
+            result = run_adb(adb, cmd)
 
     if (
         result.returncode != 0
@@ -143,7 +162,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--apk-dir",
         default=None,
-        help="Directory containing split APKs (defaults to <cache>/konnect-apk/latest).",
+        help="Directory containing split APKs (defaults to in-repo konnect-apk/).",
+    )
+    parser.add_argument(
+        "--patched",
+        action="store_true",
+        help="Use konnect-apk-patched/ and pass `-i com.android.vending` "
+             "to satisfy Pairip's installer-package check.",
     )
     args = parser.parse_args(argv)
 
@@ -152,7 +177,11 @@ def main(argv: list[str] | None = None) -> int:
         print("  ERROR: adb not found. Run `make deps`.")
         return 1
 
-    apk_dir = resolve_apk_dir(args.apk_dir)
+    apk_dir = resolve_apk_dir(args.apk_dir, patched=args.patched)
+    if args.patched and not apk_dir.exists():
+        print(f"  ERROR: patched APK dir does not exist: {apk_dir}")
+        print("  Run `make apk-patch` first.")
+        return 1
 
     print()
     print("=" * 60)
@@ -179,8 +208,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Currently installed: v{installed_version}")
     print()
 
-    if not install_split_apks(adb, apk_dir):
+    if not install_split_apks(adb, apk_dir, patched=args.patched):
         return 1
+
+    # Konnect's LocationPermissionActivity blocks the auth bootstrap until the
+    # user grants ACCESS_FINE_LOCATION. Auto-grant via `pm grant` so the harness
+    # can run unattended. Best-effort: missing permissions don't fail install.
+    print()
+    print("  Pre-granting runtime permissions (so LocationPermissionActivity unblocks)...")
+    for perm in (
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+    ):
+        result = run_adb(adb, ["shell", "pm", "grant", PACKAGE_NAME, perm])
+        marker = "✓" if result.returncode == 0 else "✗"
+        print(f"    {marker} {perm}")
 
     print()
     print("  APK installed successfully!")
