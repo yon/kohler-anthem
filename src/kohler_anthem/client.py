@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from .auth import KohlerAuth
+from .auth import B2CSignInAuth, KohlerAuth
 from .const import (
     API_BASE,
+    APIM_WRITE_ENDPOINT_PREFIX,
     DEFAULT_SKU,
     ENDPOINTS,
     FLOW_DEFAULT_PERCENT,
@@ -51,12 +52,27 @@ class KohlerAnthemClient:
         self._api_base = API_BASE
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._auth = KohlerAuth(config)
+        # Second auth flow — refresh-token-backed B2C_1A_signin. Only active
+        # when config carries a refresh_token. Without it, /commands/* writes
+        # fall back to the ROPC token and will 403 against current backend RBAC.
+        self._b2c_auth = B2CSignInAuth(config)
         self._session: aiohttp.ClientSession | None = None
         self._owns_session = False
         # Separate session pinned to the mTLS SSLContext. Lazily built on the
-        # first /commands/* call (and on first APIM-token fetch). Kept distinct
-        # from the read session so existing read flows are unchanged.
+        # first APIM-token fetch (currently used only by the unused
+        # acquire_apim_token() scaffolding — kept for future app-level ops).
         self._mtls_session: aiohttp.ClientSession | None = None
+
+    @property
+    def b2c_refresh_token(self) -> str | None:
+        """Current B2C_1A_signin refresh_token.
+
+        B2C rotates the refresh_token on each silent refresh. Callers
+        (HA's config entry, the dev helper) should read this after any
+        write call and persist it back to durable storage so the next
+        process restart can resume without a re-sign-in.
+        """
+        return self._b2c_auth.current_refresh_token
 
     async def __aenter__(self) -> KohlerAnthemClient:
         """Async context manager entry."""
@@ -127,7 +143,19 @@ class KohlerAnthemClient:
         if not self._session:
             raise ApiError("Client not connected, call connect() first")
 
-        token = await self._auth.ensure_valid_token(self._session)
+        # /commands/* writes need a token issued by the B2C_1A_signin policy
+        # (ROPC tokens are accepted for reads but rejected with 403 on writes
+        # by Kohler's backend RBAC). When the lib config carries a
+        # refresh_token, use it; otherwise fall back to ROPC and let the call
+        # 403 with a clear log line.
+        needs_b2c_signin = endpoint.startswith(APIM_WRITE_ENDPOINT_PREFIX)
+        if needs_b2c_signin and self._b2c_auth.is_configured:
+            token = await self._b2c_auth.ensure_valid_token(self._session)
+            auth_mode = "b2c_1a_signin"
+        else:
+            token = await self._auth.ensure_valid_token(self._session)
+            auth_mode = "ropc"
+
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -141,7 +169,10 @@ class KohlerAnthemClient:
         import logging
 
         _LOGGER = logging.getLogger(__name__)
-        _LOGGER.debug("API Request: %s %s payload=%s", method, endpoint, json)
+        _LOGGER.debug(
+            "API Request: %s %s payload=%s auth=%s",
+            method, endpoint, json, auth_mode,
+        )
 
         try:
             async with self._session.request(

@@ -267,6 +267,80 @@ def write_capture(captures: list[dict], dest: Path) -> None:
     atomic_write_text(dest, payload)
 
 
+def extract_refresh_tokens(captures: list[dict]) -> list[dict]:
+    """Scan captured flows for B2C `/oauth2/v2.0/token` responses with refresh_tokens.
+
+    Konnect's MSAL sign-in does a final POST to `b2clogin.com/.../oauth2/v2.0/token`
+    that returns a JSON body containing `access_token` + `refresh_token` + claims.
+    This function pulls out anything that looks like that and returns the
+    refresh_tokens with enough metadata to identify which policy issued them.
+
+    Returns a list of `{"refresh_token": str, "tfp": str|None, "scope": str|None,
+    "host": str, "captured_at": str}` — usually just one entry per sign-in.
+    """
+    found: list[dict] = []
+    for flow in captures:
+        host = flow.get("host", "")
+        if "b2clogin.com" not in host:
+            continue
+        if "/oauth2/v2.0/token" not in flow.get("path", "").lower():
+            continue
+        if flow.get("response_status") not in (200, 201):
+            continue
+        body = flow.get("response_body") or ""
+        if not body:
+            continue
+        try:
+            payload = json.loads(body)
+        except (ValueError, TypeError):
+            continue
+        refresh_token = payload.get("refresh_token")
+        if not refresh_token:
+            continue
+        # Decode the access_token for the `tfp` claim (which policy issued it)
+        tfp: str | None = None
+        scope: str | None = payload.get("scope")
+        access_token = payload.get("access_token", "")
+        if access_token and access_token.count(".") == 2:
+            try:
+                import base64
+
+                jwt_payload = access_token.split(".")[1]
+                jwt_payload += "=" * ((4 - len(jwt_payload) % 4) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(jwt_payload))
+                tfp = claims.get("tfp") or claims.get("acr")
+                scope = scope or claims.get("scp")
+            except Exception:
+                pass
+        found.append(
+            {
+                "refresh_token": refresh_token,
+                "tfp": tfp,
+                "scope": scope,
+                "host": host,
+                "captured_at": flow.get("timestamp"),
+            }
+        )
+    return found
+
+
+def write_refresh_token_file(
+    refresh_tokens: list[dict], dest: Path, prefer_tfp: str = "B2C_1A_signin"
+) -> dict | None:
+    """Write the most useful refresh_token to a 0600 file. Returns the chosen entry.
+
+    "Most useful" = the entry whose JWT was issued by `prefer_tfp` (B2C_1A_signin
+    by default, since that's what /commands/* requires). Falls back to the
+    last captured token if no preferred match exists.
+    """
+    if not refresh_tokens:
+        return None
+    preferred = [t for t in refresh_tokens if t.get("tfp") == prefer_tfp]
+    chosen = preferred[-1] if preferred else refresh_tokens[-1]
+    atomic_write_text(dest, chosen["refresh_token"] + "\n")
+    return chosen
+
+
 def teardown_groups(processes: list[subprocess.Popen]) -> None:
     """SIGTERM each process group; escalate to SIGKILL after a grace period."""
     for proc in processes:
@@ -434,11 +508,34 @@ def main(argv: list[str] | None = None) -> int:
 
     write_capture(captures, capture_json)
 
+    # Sniff out any B2C refresh_tokens for `KOHLER_B2C_REFRESH_TOKEN`. The
+    # /commands/* writes need a B2C_1A_signin-policy token; if the user signed
+    # in manually during this session, the OAuth /token POST response
+    # contains the refresh_token we need.
+    refresh_path = session_dir / "refresh_token.txt"
+    refresh_tokens = extract_refresh_tokens(captures)
+    chosen = write_refresh_token_file(refresh_tokens, refresh_path) if refresh_tokens else None
+
     print()
     print("=" * 60)
     print(f"  /token flows captured: {len(captures)}")
     print(f"  → {capture_json}")
     print("=" * 60)
+    if refresh_tokens:
+        print()
+        print("=" * 60)
+        print(f"  B2C refresh_tokens captured: {len(refresh_tokens)}")
+        for t in refresh_tokens:
+            preview = t["refresh_token"][:20] + "…" if t["refresh_token"] else "(empty)"
+            print(f"    tfp={t['tfp']} scope={t['scope']!r} token={preview}")
+        if chosen:
+            print()
+            print(f"  Saved best match (tfp={chosen['tfp']}) to:")
+            print(f"    {refresh_path}")
+            print()
+            print("  Activate in env:")
+            print(f"    export KOHLER_B2C_REFRESH_TOKEN=$(cat {refresh_path})")
+        print("=" * 60)
     if captures:
         first = captures[0]
         print("  First /token POST summary:")
