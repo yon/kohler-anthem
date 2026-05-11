@@ -4,7 +4,7 @@ description: The actual Konnect auth model — APIM mTLS, service-account ROPC, 
 type: project
 ---
 
-**Status as of 2026-05-10**: Architecture fully reverse-engineered from live capture. Previous parked work (`kohler_api_auth_parked.md`) is superseded by these findings — the "switch to B2C_1A_signin" hypothesis was a red herring. The actual blocker was mTLS at the APIM layer.
+**Status as of 2026-05-10**: APIM mTLS architecture is correctly reverse-engineered, but the "service-account JWT is what /commands/* accepts" conclusion is WRONG. See `commands_writes_403_2026-05-10.md` for the corrected picture: writes require **B2C_1A_signin-policy** tokens (acquired via interactive sign-in or refresh token), NOT the APIM-issued service-account JWT. The "switch to B2C_1A_signin" plan was NOT a red herring after all — it's the actual fix. The APIM mTLS path is real and the service-account JWT is real, but they're for app-level operations that don't include `/commands/*`.
 
 ## The complete auth picture
 
