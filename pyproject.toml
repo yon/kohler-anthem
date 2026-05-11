@@ -51,6 +51,18 @@ Repository = "https://github.com/yon/kohler-anthem"
 [tool.hatch.build.targets.wheel]
 packages = ["src/kohler_anthem"]
 
+# Source distribution: ship only the library + standard repo-root files.
+# Without this, hatch would bundle the entire repo (harness, working/, docs/,
+# the in-repo LFS-tracked APK that's ~80MB) and push the sdist past PyPI's
+# 60MB hard limit.
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/kohler_anthem",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
