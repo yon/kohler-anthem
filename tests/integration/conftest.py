@@ -26,6 +26,7 @@ ENV_KEYS = {
     "api_resource": "KOHLER_API_RESOURCE",
     "tenant_id": "KOHLER_TENANT_ID",
     "device_id": "KOHLER_DEVICE_ID",
+    "b2c_refresh_token": "KOHLER_B2C_REFRESH_TOKEN",
 }
 
 YAML_KEYS = {
@@ -36,6 +37,7 @@ YAML_KEYS = {
     "api_resource": "kohler_api_resource",
     "tenant_id": "kohler_tenant_id",
     "device_id": "kohler_device_id",
+    "b2c_refresh_token": "kohler_b2c_refresh_token",
 }
 
 
@@ -50,6 +52,8 @@ class LiveCredentials:
     api_resource: str
     tenant_id: str | None = None
     device_id: str | None = None
+    # Seeded by dev/scripts/b2c_signin.py — required for /commands/* writes.
+    b2c_refresh_token: str | None = None
 
 
 def _load_yaml(path: Path) -> dict[str, str]:
@@ -86,6 +90,7 @@ def _load_credentials() -> LiveCredentials | None:
         api_resource=resolved["api_resource"],
         tenant_id=resolved.get("tenant_id"),
         device_id=resolved.get("device_id"),
+        b2c_refresh_token=resolved.get("b2c_refresh_token"),
     )
 
 
