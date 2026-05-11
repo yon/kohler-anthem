@@ -53,6 +53,10 @@ class KohlerAnthemClient:
         self._auth = KohlerAuth(config)
         self._session: aiohttp.ClientSession | None = None
         self._owns_session = False
+        # Separate session pinned to the mTLS SSLContext. Lazily built on the
+        # first /commands/* call (and on first APIM-token fetch). Kept distinct
+        # from the read session so existing read flows are unchanged.
+        self._mtls_session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> KohlerAnthemClient:
         """Async context manager entry."""
@@ -79,10 +83,24 @@ class KohlerAnthemClient:
         await self._auth.authenticate(self._session)
 
     async def close(self) -> None:
-        """Close the client session."""
+        """Close the client sessions."""
         if self._session and self._owns_session:
             await self._session.close()
         self._session = None
+        if self._mtls_session is not None:
+            await self._mtls_session.close()
+            self._mtls_session = None
+
+    async def _get_mtls_session(self) -> aiohttp.ClientSession:
+        """Lazily build the mTLS-enabled session used for /commands/* + APIM token fetch."""
+        if self._mtls_session is None:
+            ssl_context = self._auth.apim_ssl_context()
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            self._mtls_session = aiohttp.ClientSession(
+                timeout=self._timeout,
+                connector=connector,
+            )
+        return self._mtls_session
 
     async def _request(
         self,

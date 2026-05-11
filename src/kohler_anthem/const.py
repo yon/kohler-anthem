@@ -39,3 +39,23 @@ FLOW_BYTE_MAX = 200
 
 # Request timeout (seconds)
 REQUEST_TIMEOUT = 30
+
+# APIM mTLS service-account auth (the path Konnect uses to authorize
+# /commands/* writes). The library presents `app_certificate.p12` (bundled
+# in _data/) over mTLS to APIM, which issues a service-account JWT for
+# admin.user@kohler.com. That JWT is what Kohler's /commands/* endpoints
+# accept; the ROPC user JWT is rejected with 403.
+APIM_HOST = "az-amer-prod-kohlerkonnect-apim.azure-api.net"
+APIM_TOKEN_URL = f"https://{APIM_HOST}/token/api/v1/token/"
+# Subscription key required by the /token/* endpoint family. Distinct from
+# the API subscription key the rest of the library uses (which goes through
+# api-kohler-us.kohler.io). Constant across all Konnect installs — embedded
+# in every public APK.
+APIM_TOKEN_SUBSCRIPTION_KEY = "ca2f50cbc01845e9af356f866b16c9f1"
+# The bundled client cert's PKCS12 password. Recovered via Frida hook on
+# KeyStore.load(); same constant in every public APK.
+APIM_CLIENT_CERT_PASSWORD = "d6jaqQ1nJxFAuXs"
+# Endpoint prefix(es) that require the mTLS + service-account JWT path.
+# Reads (/devices/, /platform/api/v1/mobile/settings) still work with the
+# ROPC user JWT today; only /commands/* needs the new path.
+APIM_WRITE_ENDPOINT_PREFIX = "/platform/api/v1/commands/"

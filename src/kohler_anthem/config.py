@@ -32,8 +32,11 @@ class KohlerConfig:
     # Azure API Management
     apim_subscription_key: str
 
-    # API resource for OAuth scope
-    api_resource: str
+    # API resource for OAuth scope. Accepts either the application GUID
+    # (e.g. "f5d87f3d-bdeb-4933-ab70-ef56cc343744") or a path fragment
+    # (e.g. "api-mob/access"). The current Kohler tenant only honors the
+    # GUID form — the path form fails with AADB2C90205.
+    api_resource: str = "f5d87f3d-bdeb-4933-ab70-ef56cc343744"
 
     # Azure AD B2C (defaults match Kohler's configuration)
     auth_tenant: str = "konnectkohler.onmicrosoft.com"
@@ -49,5 +52,19 @@ class KohlerConfig:
 
     @property
     def auth_scope(self) -> str:
-        """Build the OAuth scope string."""
-        return f"openid offline_access https://{self.auth_tenant}/{self.api_resource}/apiaccess"
+        """Build the OAuth scope string.
+
+        Kohler's B2C tenant only honors scopes built against the API
+        resource's **application GUID** (currently
+        ``f5d87f3d-bdeb-4933-ab70-ef56cc343744``). The older
+        ``api-mob/access`` path form fails with AADB2C90205
+        ("application does not have sufficient permissions").
+
+        Accepts ``api_resource`` as either a bare GUID/path or a full
+        ``https://...`` URL — both are normalized into the right scope.
+        """
+        if self.api_resource.startswith(("https://", "http://")):
+            base = self.api_resource.rstrip("/")
+        else:
+            base = f"https://{self.auth_tenant}/{self.api_resource.strip('/')}"
+        return f"openid offline_access {base}/apiaccess"

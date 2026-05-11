@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3.9.0",
+    "cryptography>=41.0",
     "eval-type-backport>=0.2.0; python_version < '3.10'",
     "paho-mqtt>=2.0",
     "pydantic>=2.0.0",
@@ -49,6 +50,9 @@ Repository = "https://github.com/yon/kohler-anthem"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kohler_anthem"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/kohler_anthem/_data/app_certificate.p12" = "kohler_anthem/_data/app_certificate.p12"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
