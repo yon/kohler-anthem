@@ -60,13 +60,14 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _decode_jwt(token: str) -> dict:
+def _decode_jwt(token: str) -> dict[str, object]:
     parts = token.split(".")
     if len(parts) != 3:
         return {}
     payload = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
     try:
-        return json.loads(base64.urlsafe_b64decode(payload))
+        decoded: dict[str, object] = json.loads(base64.urlsafe_b64decode(payload))
+        return decoded
     except Exception:
         return {}
 
@@ -74,7 +75,7 @@ def _decode_jwt(token: str) -> dict:
 STATE_FILE = "/tmp/kohler_b2c_signin_state.json"
 
 
-def _build_authorize_url() -> tuple[str, dict]:
+def _build_authorize_url() -> tuple[str, dict[str, str]]:
     verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(16)
     nonce = secrets.token_urlsafe(16)
@@ -243,7 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     p_ex.set_defaults(func=cmd_exchange)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    result: int = args.func(args)
+    return result
 
 
 if __name__ == "__main__":
