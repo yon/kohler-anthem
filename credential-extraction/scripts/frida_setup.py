@@ -1,233 +1,243 @@
 #!/usr/bin/env python3
-"""Download and install frida-server on Android emulator.
+"""Download and install frida-server on the Android emulator.
 
-Usage:
-    python3 frida_setup.py
-
-This script:
-1. Detects the emulator architecture
-2. Downloads the matching frida-server from GitHub
-3. Pushes it to the emulator and starts it
+What this does:
+  1. Detect the device ABI via `getprop ro.product.cpu.abi`.
+  2. Look up the GitHub release whose tag matches the installed `frida-tools`
+     version (so the agent and server are version-locked — major-version
+     drift between the two is the #1 historical failure mode).
+  3. Compute the SHA-256 of the matching `frida-server-<ver>-android-<abi>`
+     binary. If a binary with that hash is already pushed to the device, skip
+     the re-push.
+  4. Otherwise download, decompress (xz), push to `/data/local/tmp/frida-server`,
+     chmod 755, start it detached with `nohup … &`.
+  5. Verify it's actually running.
 """
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
-import shutil
-import subprocess
+import lzma
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Frida GitHub releases API
-FRIDA_RELEASES_URL = "https://api.github.com/repos/frida/frida/releases/latest"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from env_lib import find_adb, find_frida, run
 
-# User agent
-USER_AGENT = "kohler-anthem-setup"
+GITHUB_API = "https://api.github.com/repos/frida/frida"
+USER_AGENT = "kohler-anthem-harness"
+REMOTE_PATH = "/data/local/tmp/frida-server"
 
-
-def run_adb(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    """Run an adb command."""
-    return subprocess.run(
-        ["adb", *args],
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+ABI_MAP = {
+    "arm64-v8a": "arm64",
+    "armeabi-v7a": "arm",
+    "x86_64": "x86_64",
+    "x86": "x86",
+}
 
 
-def check_adb_connection() -> bool:
-    """Check if adb can connect to a device."""
-    result = run_adb(["devices"], check=False)
+def check_device_connected(adb: str) -> bool:
+    result = run([adb, "devices"])
     if result.returncode != 0:
         return False
-
-    # Parse output to find connected devices
-    lines = result.stdout.strip().split("\n")
-    return any("\tdevice" in line for line in lines[1:])
+    return any("\tdevice" in line for line in result.stdout.strip().splitlines()[1:])
 
 
-def get_device_arch() -> str | None:
-    """Get the CPU architecture of the connected device."""
-    result = run_adb(["shell", "getprop", "ro.product.cpu.abi"], check=False)
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return None
+def device_abi(adb: str) -> str | None:
+    result = run([adb, "shell", "getprop", "ro.product.cpu.abi"])
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
-def get_frida_server_url(arch: str) -> tuple[str, str] | None:
-    """Get the download URL for frida-server matching the architecture."""
-    # Map Android ABIs to Frida naming
-    arch_map = {
-        "arm64-v8a": "arm64",
-        "armeabi-v7a": "arm",
-        "x86_64": "x86_64",
-        "x86": "x86",
-    }
+def installed_frida_version(frida_cli: str) -> str | None:
+    """Return the frida-tools version on the host (drives which server we want)."""
+    result = run([frida_cli, "--version"])
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
 
-    frida_arch = arch_map.get(arch)
+
+def github_release_for_version(version: str) -> dict:
+    """Look up the GitHub release for the given frida version (`16.x.y` style)."""
+    url = f"{GITHUB_API}/releases/tags/{version}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode())
+
+
+def github_latest_release() -> dict:
+    url = f"{GITHUB_API}/releases/latest"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode())
+
+
+def find_asset(release: dict, abi: str) -> tuple[str, str] | None:
+    """Return (download_url, asset_name) for the frida-server matching the given Android ABI."""
+    frida_arch = ABI_MAP.get(abi)
     if not frida_arch:
         return None
-
-    # Fetch latest release info
-    try:
-        request = urllib.request.Request(
-            FRIDA_RELEASES_URL,
-            headers={"User-Agent": USER_AGENT},
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            release = json.loads(response.read().decode())
-    except Exception as e:
-        print(f"  ERROR: Failed to fetch Frida release info: {e}")
-        return None
-
-    # Find the frida-server asset for this architecture
-    target_name = f"frida-server-{release['tag_name'].lstrip('v')}-android-{frida_arch}.xz"
-
+    target = f"frida-server-{release['tag_name'].lstrip('v')}-android-{frida_arch}.xz"
     for asset in release.get("assets", []):
-        if asset["name"] == target_name:
-            return asset["browser_download_url"], release["tag_name"]
-
+        if asset["name"] == target:
+            return asset["browser_download_url"], target
     return None
 
 
-def download_and_extract(url: str, output_path: Path) -> bool:
-    """Download and extract frida-server."""
+def download_and_decompress(url: str, dest: Path) -> bool:
+    print(f"  Downloading {url}")
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        import lzma
-
-        print(f"  Downloading from: {url}")
-
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=120) as response:
-            compressed_data = response.read()
-
-        print("  Extracting...")
-        decompressed_data = lzma.decompress(compressed_data)
-
-        output_path.write_bytes(decompressed_data)
-        return True
-
-    except ImportError:
-        print("  ERROR: lzma module not available")
-        print("  Try: brew install xz && pip3 install backports.lzma")
+        with urllib.request.urlopen(request, timeout=180) as response:
+            compressed = response.read()
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(f"  ERROR: download failed: {exc}")
         return False
-    except Exception as e:
-        print(f"  ERROR: {e}")
-        return False
-
-
-def install_frida_server(local_path: Path) -> bool:
-    """Push frida-server to the emulator and set it up."""
-    remote_path = "/data/local/tmp/frida-server"
-
-    print(f"  Pushing to emulator: {remote_path}")
-    result = run_adb(["push", str(local_path), remote_path], check=False)
-    if result.returncode != 0:
-        print(f"  ERROR: Failed to push frida-server: {result.stderr}")
-        return False
-
-    print("  Setting permissions...")
-    run_adb(["shell", "chmod", "755", remote_path], check=False)
-
+    print(f"  Decompressing ({len(compressed)} bytes)...")
+    dest.write_bytes(lzma.decompress(compressed))
     return True
 
 
-def start_frida_server() -> bool:
-    """Start frida-server on the emulator."""
+def remote_md5(adb: str, path: str) -> str | None:
+    result = run([adb, "shell", "md5sum", path])
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return result.stdout.strip().split()[0]
+
+
+def local_md5(path: Path) -> str:
+    h = hashlib.md5()  # md5 not for security — matches `adb shell md5sum`
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 16), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def push_frida_server(adb: str, local_path: Path) -> bool:
+    print(f"  Pushing → {REMOTE_PATH}")
+    result = run([adb, "push", str(local_path), REMOTE_PATH])
+    if result.returncode != 0:
+        print(f"  ERROR: adb push failed: {result.stderr.strip()}")
+        return False
+    chmod = run([adb, "shell", "chmod", "755", REMOTE_PATH])
+    if chmod.returncode != 0:
+        print(f"  WARNING: chmod failed: {chmod.stderr.strip()}")
+    return True
+
+
+def start_frida_server(adb: str) -> bool:
+    """Start frida-server detached, using setsid + nohup so it survives the adb shell."""
     print("  Starting frida-server...")
-
-    # Kill any existing instance
-    run_adb(["shell", "pkill", "-9", "frida-server"], check=False)
-
-    # Try to get root
-    run_adb(["root"], check=False)
-
-    # Start frida-server in background
-    # Using shell to run in background
-    subprocess.Popen(
-        ["adb", "shell", "/data/local/tmp/frida-server", "&"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    run([adb, "shell", "pkill", "-9", "frida-server"])
+    run([adb, "root"])
+    time.sleep(1)
+    # The literal `&` argv to adb shell doesn't background. Use setsid + nohup so the
+    # frida-server process detaches and isn't killed when this adb shell exits.
+    run(
+        [
+            adb,
+            "shell",
+            "nohup setsid " + REMOTE_PATH + " >/dev/null 2>&1 </dev/null &",
+        ]
     )
 
-    # Wait a moment and check if it's running
-    import time
-
-    time.sleep(2)
-
-    result = run_adb(["shell", "pgrep", "-x", "frida-server"], check=False)
-    if result.returncode == 0 and result.stdout.strip():
-        return True
-
-    print("  WARNING: frida-server may not have started.")
-    print("  Try manually: adb shell /data/local/tmp/frida-server &")
+    # Poll a few times — the server takes ~1-2s to bind
+    for _ in range(10):
+        time.sleep(0.5)
+        result = run([adb, "shell", "pgrep", "-x", "frida-server"])
+        if result.returncode == 0 and result.stdout.strip():
+            return True
     return False
 
 
-def main() -> int:
-    """Set up frida-server on the emulator."""
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download/push even if the device already has the right server.",
+    )
+    args = parser.parse_args(argv)
+
     print()
     print("=" * 60)
     print("Frida Server Setup")
     print("=" * 60)
     print()
 
-    # Check adb
-    if not shutil.which("adb"):
-        print("  ERROR: adb not found. Run 'make deps' to install.")
+    adb = find_adb()
+    if not adb:
+        print("  ERROR: adb not found. Run `make deps`.")
         return 1
 
-    # Check device connection
-    print("  Checking for connected device...")
-    if not check_adb_connection():
-        print("  ERROR: No device connected.")
-        print()
-        print("  Make sure Genymotion is running with an Android device.")
-        print("  The device should appear in: adb devices")
+    if not check_device_connected(adb):
+        print("  ERROR: No device connected. Run `make emulator-setup` first.")
         return 1
 
-    # Get architecture
-    print("  Detecting device architecture...")
-    arch = get_device_arch()
-    if not arch:
-        print("  ERROR: Could not determine device architecture.")
+    abi = device_abi(adb)
+    if not abi:
+        print("  ERROR: Could not determine device ABI.")
         return 1
-    print(f"    Architecture: {arch}")
+    print(f"  Device ABI: {abi}")
 
-    # Get download URL
-    print("  Finding latest frida-server...")
-    url_info = get_frida_server_url(arch)
-    if not url_info:
-        print(f"  ERROR: No frida-server available for architecture: {arch}")
+    frida_cli = find_frida()
+    if not frida_cli:
+        print("  ERROR: frida-tools not installed. Run `make deps`.")
         return 1
+    version = installed_frida_version(frida_cli)
+    if not version:
+        print("  ERROR: could not determine installed frida-tools version")
+        return 1
+    print(f"  frida-tools version: {version}")
 
-    download_url, version = url_info
-    print(f"    Version: {version}")
-    print()
+    # Try to get the matching server release; if exact-tag fetch 404s, fall back to "latest"
+    try:
+        release = github_release_for_version(version)
+        print(f"  Found matching GitHub release: {release['tag_name']}")
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        print(f"  WARNING: no exact-match release for {version} ({exc}); using 'latest'")
+        try:
+            release = github_latest_release()
+        except (urllib.error.URLError, TimeoutError) as exc2:
+            print(f"  ERROR: GitHub lookup failed: {exc2}")
+            return 1
 
-    # Download and extract
+    asset = find_asset(release, abi)
+    if not asset:
+        tag = release['tag_name']
+        print(f"  ERROR: no frida-server-android-* asset for ABI {abi} in release {tag}")
+        return 1
+    url, asset_name = asset
+    print(f"  Asset: {asset_name}")
+
     with tempfile.TemporaryDirectory() as tmpdir:
         local_path = Path(tmpdir) / "frida-server"
-
-        if not download_and_extract(download_url, local_path):
+        if not download_and_decompress(url, local_path):
             return 1
 
-        # Install on device
-        print()
-        if not install_frida_server(local_path):
-            return 1
+        local_hash = local_md5(local_path)
+        existing_hash = remote_md5(adb, REMOTE_PATH)
+        if existing_hash and existing_hash == local_hash and not args.force:
+            print("  frida-server on device matches local hash; skipping push.")
+        else:
+            if not push_frida_server(adb, local_path):
+                return 1
 
-    # Start server
-    print()
-    if not start_frida_server():
+    if not start_frida_server(adb):
+        print("  ERROR: frida-server did not start. Check `adb shell pgrep -x frida-server`.")
         return 1
 
     print()
-    print("  Frida server is running!")
+    print("  frida-server is running.")
     print()
-    print("  Next step: make apim-capture")
+    print("  Next step: make emulator-apk-install")
     print()
     return 0
 

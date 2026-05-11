@@ -1,0 +1,7 @@
+After apktool decompile, AndroidManifest.xml line 86 ends up as:
+  <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@null"/>
+
+This breaks apktool rebuild ("@null isn't a valid resource attribute value").
+
+Fix: delete that line before `apktool b`:
+  sed -i '' '/default_notification_icon/d' AndroidManifest.xml

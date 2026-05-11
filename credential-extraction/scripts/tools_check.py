@@ -10,18 +10,26 @@ Checks for: adb, frida, jadx, jq, python3
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from env_lib import (
+    find_adb,
+    find_frida,
+    find_mitmdump,
+)
 
 TOOLS = [
-    ("adb", "Android Debug Bridge", "brew install --cask android-platform-tools"),
-    ("frida", "Frida instrumentation", "pip3 install frida-tools"),
-    ("jadx", "APK decompiler", "brew install jadx"),
-    ("jq", "JSON processor", "brew install jq"),
+    ("adb", "Android Debug Bridge", "brew install --cask android-platform-tools", find_adb),
+    ("frida", "Frida instrumentation", ".venv/bin/pip install frida-tools", find_frida),
+    ("jadx", "APK decompiler", "brew install jadx", lambda: shutil.which("jadx")),
+    ("jq", "JSON processor", "brew install jq", lambda: shutil.which("jq")),
+    ("mitmdump", "mitmproxy CLI", "brew install mitmproxy", find_mitmdump),
+    ("apktool", "APK patcher", "brew install apktool", lambda: shutil.which("apktool")),
+    ("sdkmanager", "Android SDK manager", "brew install --cask android-commandlinetools",
+     lambda: shutil.which("sdkmanager")),
+    ("openssl", "OpenSSL CLI", "(macOS includes this by default)", lambda: shutil.which("openssl")),
 ]
-
-
-def check_tool(name: str) -> bool:
-    """Check if a tool is available in PATH."""
-    return shutil.which(name) is not None
 
 
 def check_python_version() -> bool:
@@ -47,12 +55,12 @@ def main() -> int:
         missing.append(("python3.9+", "Python 3.9 or later", "brew install python@3.11"))
 
     # Check each tool
-    for name, description, install_cmd in TOOLS:
-        if check_tool(name):
-            # Get version if possible
+    for name, description, install_cmd, finder in TOOLS:
+        path = finder()
+        if path:
             try:
                 result = subprocess.run(
-                    [name, "--version"],
+                    [path, "--version"],
                     capture_output=True,
                     text=True,
                     timeout=5,

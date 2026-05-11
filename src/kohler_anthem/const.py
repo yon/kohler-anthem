@@ -39,3 +39,9 @@ FLOW_BYTE_MAX = 200
 
 # Request timeout (seconds)
 REQUEST_TIMEOUT = 30
+
+# /commands/* writes require a B2C_1A_signin-policy token; reads work with
+# the ROPC token. KohlerAnthemClient._request routes endpoints whose path
+# starts with this prefix through B2CSignInAuth when a refresh_token is
+# configured. See `working/findings/commands_writes_403_2026-05-10.md`.
+APIM_WRITE_ENDPOINT_PREFIX = "/platform/api/v1/commands/"

@@ -1,5 +1,11 @@
 .DS_Store
 __pycache__/
+
+# Patched Konnect APKs are regenerable via `make apk-patch` from the
+# git-LFS-tracked konnect-apk/ source. The patched bundle is ~88MB and
+# changes whenever the debug keystore changes — not worth tracking.
+credential-extraction/konnect-apk-patched/
+
 .cache
 .claude/
 .coverage

@@ -34,6 +34,7 @@ async def probe(credentials: LiveCredentials) -> ProbeSet:
         api_resource=credentials.api_resource,
         tenant_id=credentials.tenant_id,
         device_id=credentials.device_id,
+        b2c_refresh_token=credentials.b2c_refresh_token,
     )
 
 
@@ -125,31 +126,46 @@ def test_write_mobile_settings_allowed(probe: ProbeSet) -> None:
     assert result.status in WRITE_OK, _fmt(result)
 
 
-def test_write_warmup_allowed(probe: ProbeSet) -> None:
+def _commands_probe_indeterminate(credentials: LiveCredentials) -> bool:
+    """When b2c_refresh_token is configured, the empty-body /commands/* probes
+    are ambiguous: Kohler returns 403 for both wrong-auth AND missing-body-
+    fields. The real auth verification lives in test_library_writes.py.
+    """
+    return credentials.b2c_refresh_token is not None
+
+
+def test_write_warmup_allowed(probe: ProbeSet, credentials: LiveCredentials) -> None:
     """POST /platform/api/v1/commands/gcs/warmup must be allowed.
 
-    Backs the warmup switch entity. ROPC tokens are currently rejected here
-    (as of the May 2026 regression) — this test is the canary.
+    ROPC-only mode: a 403 here is the canary for the original regression.
+    B2C mode: empty-body returns 403 even with valid auth (Kohler quirk) —
+    delegated to test_library_writes.py for the definitive write check.
     """
+    if _commands_probe_indeterminate(credentials):
+        pytest.skip("B2C refresh_token configured — see test_library_writes.py")
     result = probe.by_name["write.warmup"]
     assert result.status in WRITE_OK, _fmt(result)
 
 
-def test_write_preset_control_allowed(probe: ProbeSet) -> None:
+def test_write_preset_control_allowed(probe: ProbeSet, credentials: LiveCredentials) -> None:
     """POST /platform/api/v1/commands/gcs/controlpresetorexperience must be allowed.
 
-    Backs preset start/stop. Currently 403 with ROPC tokens.
+    See `test_write_warmup_allowed` for the ROPC vs B2C handling.
     """
+    if _commands_probe_indeterminate(credentials):
+        pytest.skip("B2C refresh_token configured — see test_library_writes.py")
     result = probe.by_name["write.preset_control"]
     assert result.status in WRITE_OK, _fmt(result)
 
 
-def test_write_valve_control_allowed(probe: ProbeSet) -> None:
+def test_write_valve_control_allowed(probe: ProbeSet, credentials: LiveCredentials) -> None:
     """POST /platform/api/v1/commands/gcs/solowritesystem must be allowed.
 
     Backs every light / number / switch entity that controls valve state.
-    Currently 403 with ROPC tokens — the symptom that triggered this suite.
+    See `test_write_warmup_allowed` for the ROPC vs B2C handling.
     """
+    if _commands_probe_indeterminate(credentials):
+        pytest.skip("B2C refresh_token configured — see test_library_writes.py")
     result = probe.by_name["write.valve_control"]
     assert result.status in WRITE_OK, _fmt(result)
 
