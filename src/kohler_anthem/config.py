@@ -48,7 +48,7 @@ class KohlerConfig:
     b2c_signin_policy: str = "B2C_1A_signin"
     # Refresh token for the B2C_1A_signin policy. When set, the client routes
     # /commands/* writes through this token instead of the ROPC user token.
-    # Seed via `dev/scripts/b2c_signin.py` or HA's config flow.
+    # Seed via `python -m kohler_anthem.b2c_signin` or HA's config flow.
     b2c_refresh_token: str | None = None
 
     @property

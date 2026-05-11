@@ -114,68 +114,6 @@ def wait_for_app_ready(adb: str, timeout: int = 60) -> bool:
     return False
 
 
-# Konnect's bootstrap walks through several UI gates that block the /token
-# auth call. We drive past each one with a center-of-button tap so the harness
-# can run unattended. Coordinates are for the Pixel 5 / Android 11 AVD layout.
-LOCATION_PERMISSION_ACTIVITY = ".products.feature.locationpermission.LocationPermissionActivity"
-AZURE_LOGIN_ACTIVITY = ".products.feature.sign.presentation.AzureLoginActivity"
-CONTINUE_BUTTON_TAP_XY = (540, 2028)   # LocationPermissionActivity "Continue"
-SIGN_IN_BUTTON_TAP_XY = (540, 1705)    # AzureLoginActivity "Sign In" — fires /token
-
-
-def _current_activity(adb: str) -> str:
-    """Return the top resumed activity name, or '' if it can't be determined."""
-    result = subprocess.run(
-        [adb, "shell", "dumpsys", "activity", "activities"],
-        capture_output=True, text=True, timeout=10,
-    )
-    if result.returncode != 0:
-        return ""
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line.startswith("mResumedActivity") or line.startswith("topResumedActivity"):
-            return line
-    return ""
-
-
-def _tap(adb: str, x: int, y: int) -> None:
-    subprocess.run(
-        [adb, "shell", "input", "tap", str(x), str(y)],
-        capture_output=True, timeout=5,
-    )
-
-
-def drive_to_token_call(adb: str, *, max_attempts: int = 25) -> bool:
-    """Best-effort: tap through Konnect's UI gates until /token can fire.
-
-    Sequence:
-      1. LocationPermissionActivity → tap "Continue"
-      2. AzureLoginActivity → tap "Sign In" (this fires GET /token/api/v1/token)
-    Returns True once the Sign In tap has been sent. The function is intentionally
-    tolerant: if a screen's layout differs, it gives up so the user can drive the
-    UI manually.
-    """
-    sign_in_tapped = False
-    for attempt in range(max_attempts):
-        activity = _current_activity(adb)
-        if LOCATION_PERMISSION_ACTIVITY in activity:
-            _tap(adb, *CONTINUE_BUTTON_TAP_XY)
-            time.sleep(1.5)
-            continue
-        if AZURE_LOGIN_ACTIVITY in activity:
-            _tap(adb, *SIGN_IN_BUTTON_TAP_XY)
-            sign_in_tapped = True
-            print(f"  ✓ Tapped Sign In on AzureLoginActivity (attempt {attempt + 1})")
-            return True
-        # Some other activity (likely a transient splash) — wait briefly and retry
-        time.sleep(1.5)
-    if sign_in_tapped:
-        return True
-    print("  ⚠ Could not auto-drive Konnect to the /token call. "
-          "Tap through 'Continue' and 'Sign In' on the emulator manually.")
-    return False
-
-
 def parse_token_flows(flow_file: Path) -> list[dict]:
     """Parse the mitmdump stream file and return /token-related entries.
 
@@ -458,11 +396,6 @@ def main(argv: list[str] | None = None) -> int:
             processes.append(frida_proc)
             if not wait_for_app_ready(adb, timeout=60):
                 print(f"  WARNING: app did not start within 60s — see {frida_log_path}")
-            # Konnect's bootstrap walks: splash → LocationPermissionActivity →
-            # AzureLoginActivity. /token only fires when "Sign In" is tapped.
-            # Drive the UI past these gates so the harness can run unattended.
-            time.sleep(6)
-            drive_to_token_call(adb)
 
         print()
         print("  Capture is live. Sign in to the Konnect app in the emulator now.")

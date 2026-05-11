@@ -58,10 +58,6 @@ class KohlerAnthemClient:
         self._b2c_auth = B2CSignInAuth(config)
         self._session: aiohttp.ClientSession | None = None
         self._owns_session = False
-        # Separate session pinned to the mTLS SSLContext. Lazily built on the
-        # first APIM-token fetch (currently used only by the unused
-        # acquire_apim_token() scaffolding — kept for future app-level ops).
-        self._mtls_session: aiohttp.ClientSession | None = None
 
     @property
     def b2c_refresh_token(self) -> str | None:
@@ -99,24 +95,10 @@ class KohlerAnthemClient:
         await self._auth.authenticate(self._session)
 
     async def close(self) -> None:
-        """Close the client sessions."""
+        """Close the client session."""
         if self._session and self._owns_session:
             await self._session.close()
         self._session = None
-        if self._mtls_session is not None:
-            await self._mtls_session.close()
-            self._mtls_session = None
-
-    async def _get_mtls_session(self) -> aiohttp.ClientSession:
-        """Lazily build the mTLS-enabled session used for /commands/* + APIM token fetch."""
-        if self._mtls_session is None:
-            ssl_context = self._auth.apim_ssl_context()
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            self._mtls_session = aiohttp.ClientSession(
-                timeout=self._timeout,
-                connector=connector,
-            )
-        return self._mtls_session
 
     async def _request(
         self,

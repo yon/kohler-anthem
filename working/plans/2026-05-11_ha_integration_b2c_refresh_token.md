@@ -25,7 +25,7 @@ host. The "open URL, paste back" pattern is identical whether driven by a
 CLI helper or HA's UI; we keep it in a CLI helper to avoid bloating the
 integration.
 
-The user runs `kohler-anthem`'s `dev/scripts/b2c_signin.py` once per
+The user runs `kohler-anthem`'s `python -m kohler_anthem.b2c_signin` once per
 account (open URL → sign in → copy `msauth://` redirect URL → paste back
 into the second invocation). The script prints the refresh_token. The
 user pastes it into HA's integration setup form.
@@ -136,20 +136,18 @@ In the setup section, add:
 > The second command prints the refresh_token. Paste it into HA's
 > integration setup form under "B2C Refresh Token".
 
-This implies promoting `dev/scripts/b2c_signin.py` into a public,
-package-included module — see "Library release" below.
+`python -m kohler_anthem.b2c_signin` is now part of the library package
+(ships with `kohler-anthem >= 0.2.0`).
 
 ## Library release: kohler-anthem 0.2.0
 
-1. Promote `dev/scripts/b2c_signin.py` to `src/kohler_anthem/b2c_signin.py`
-   so HA users can run it via `python -m kohler_anthem.b2c_signin ...`
-   without cloning the repo. The dev/scripts copy can be kept as a thin
-   shim or removed.
-2. Bump `pyproject.toml` version from `0.1.4` to `0.2.0`.
-3. CHANGELOG entry summarizing the new `b2c_refresh_token` field +
-   `B2CSignInAuth` class.
-4. Publish to PyPI.
-5. Update HA integration's `manifest.json` requirements to the new pin.
+Already done in commit on `feat/emulator-token-capture`:
+* `src/kohler_anthem/b2c_signin.py` — runnable as `python -m kohler_anthem.b2c_signin`
+* `pyproject.toml` version bumped to `0.2.0`
+* Library is leaner: dropped the dead APIM mTLS Python scaffolding and the
+  `cryptography` dep; the harness still has the cert path via mitmdump.
+
+Remaining release work: publish to PyPI when ready.
 
 ## Testing checklist
 

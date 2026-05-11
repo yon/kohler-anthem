@@ -10,7 +10,7 @@ from kohler_anthem import (
     KohlerConfig,
     Outlet,
 )
-from kohler_anthem.const import API_BASE, APIM_TOKEN_URL
+from kohler_anthem.const import API_BASE
 from kohler_anthem.exceptions import ApiError, DeviceNotFoundError
 
 
@@ -34,15 +34,6 @@ def mock_token_response() -> dict:
         "refresh_token": "test-refresh-token",
         "expires_in": 3600,
         "id_token": "test-id-token",
-    }
-
-
-@pytest.fixture
-def mock_apim_token_response() -> dict:
-    """Mock APIM mTLS token response (used for /commands/* writes)."""
-    return {
-        "access_token": "test-apim-access-token",
-        "expires_in": 3600,
     }
 
 
@@ -240,14 +231,12 @@ class TestKohlerAnthemClient:
         self,
         config: KohlerConfig,
         mock_token_response: dict,
-        mock_apim_token_response: dict,
         mock_customer_response: dict,
         mock_command_response: dict,
     ) -> None:
         """Test turn_on_outlet."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
-            m.get(APIM_TOKEN_URL, payload=mock_apim_token_response)
             m.get(
                 f"{API_BASE}/devices/api/v1/device-management/customer-device/customer-123",
                 payload=mock_customer_response,
@@ -276,14 +265,12 @@ class TestKohlerAnthemClient:
         self,
         config: KohlerConfig,
         mock_token_response: dict,
-        mock_apim_token_response: dict,
         mock_customer_response: dict,
         mock_command_response: dict,
     ) -> None:
         """Test turn_off."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
-            m.get(APIM_TOKEN_URL, payload=mock_apim_token_response)
             m.get(
                 f"{API_BASE}/devices/api/v1/device-management/customer-device/customer-123",
                 payload=mock_customer_response,
@@ -304,7 +291,6 @@ class TestKohlerAnthemClient:
         self,
         config: KohlerConfig,
         mock_token_response: dict,
-        mock_apim_token_response: dict,
         mock_command_response: dict,
     ) -> None:
         """Test start_preset."""
@@ -313,7 +299,6 @@ class TestKohlerAnthemClient:
         ]
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
-            m.get(APIM_TOKEN_URL, payload=mock_apim_token_response)
             m.post(
                 f"{API_BASE}/platform/api/v1/commands/gcs/controlpresetorexperience",
                 payload=mock_command_response,
@@ -335,13 +320,11 @@ class TestKohlerAnthemClient:
         self,
         config: KohlerConfig,
         mock_token_response: dict,
-        mock_apim_token_response: dict,
         mock_command_response: dict,
     ) -> None:
         """Test start_warmup."""
         with aioresponses() as m:
             m.post(config.token_url, payload=mock_token_response)
-            m.get(APIM_TOKEN_URL, payload=mock_apim_token_response)
             m.post(
                 f"{API_BASE}/platform/api/v1/commands/gcs/warmup",
                 payload=mock_command_response,

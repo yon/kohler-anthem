@@ -116,7 +116,7 @@ def cmd_url(args: argparse.Namespace) -> int:
     print("        That's expected. Copy the FULL URL from the address bar.")
     print()
     print("Step 4. Run:")
-    print("        .venv/bin/python dev/scripts/b2c_signin.py exchange '<paste-url>'")
+    print("        python -m kohler_anthem.b2c_signin exchange '<paste-url>'")
     print()
     if not args.no_browser:
         with contextlib.suppress(Exception):
@@ -236,8 +236,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Step 2: exchange the redirected msauth:// URL for tokens.",
     )
     p_ex.add_argument("url", help="The msauth://com.kohler.hermoth/...?code=... URL.")
-    p_ex.add_argument("--env-file", default="/Volumes/ring/env/kohler.env",
-                      help="Where to write KOHLER_B2C_REFRESH_TOKEN.")
+    p_ex.add_argument("--env-file", default=None,
+                      help="If set, write KOHLER_B2C_REFRESH_TOKEN to this file "
+                           "(replacing any existing value). Defaults to None — "
+                           "just prints the refresh_token for manual handling.")
     p_ex.set_defaults(func=cmd_exchange)
 
     args = parser.parse_args(argv)

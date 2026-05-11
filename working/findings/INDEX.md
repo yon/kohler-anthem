@@ -15,6 +15,7 @@ system's index schema; harmless for human readers).
 | [`harness_layout.md`](harness_layout.md) | Where the emulator/Frida/mitmproxy capture harness lives, what's automated vs manual, where artifacts go. |
 | [`auth_architecture_2026-05-10.md`](auth_architecture_2026-05-10.md) | Partial auth model: APIM mTLS + service-account ROPC. **Superseded for the /commands/* question** by `commands_writes_403_2026-05-10.md` — the service-account JWT does NOT unlock writes. Still valid for the /token endpoint architecture. |
 | [`commands_writes_403_2026-05-10.md`](commands_writes_403_2026-05-10.md) | **Definitive answer** to why /commands/* returns 403: writes require B2C_1A_signin-policy tokens (acquired interactively via MSAL). Decompile + empirical probe matrix included. The fix is the original "B2C_1A_signin auth rewrite" (path B with msal-python). |
+| [`why_writes_started_failing_2026-05-11.md`](why_writes_started_failing_2026-05-11.md) | **Postmortem** explaining the user-visible symptom (HA reads OK, writes 403). Two Kohler-side changes: (A) api_resource renamed → fresh ROPC fails AADB2C90205, (B) /commands/* RBAC now requires `tfp=B2C_1A_signin` → cached ROPC writes 403. Both fixed in 0.2.0. |
 | [`konnect_runtime_bypass_notes.md`](konnect_runtime_bypass_notes.md) | How we got Konnect to run on a non-rooted-looking emulator: apktool smali patch, Pairip workaround, mitmproxy upstream client cert config. |
 
 When picking up auth-rewrite work after a break, start with
